@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Présentation Technique • Intégration SMS DGTT</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #2c3e50;
+            background: #f5f7fa;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            background: white;
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Header */
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 60px 50px;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 15px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .subtitle {
+            font-size: 1.3em;
+            opacity: 0.95;
+            font-weight: 300;
+        }
+
+        /* Summary Box */
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1px;
+            background: #e0e0e0;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .summary-item {
+            background: white;
+            padding: 25px;
+            text-align: center;
+        }
+
+        .summary-item strong {
+            display: block;
+            color: #667eea;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+
+        .summary-item span {
+            font-size: 1.1em;
+            color: #2c3e50;
+        }
+
+        /* Content */
+        .content {
+            padding: 50px;
+        }
+
+        h2 {
+            color: #667eea;
+            font-size: 1.8em;
+            margin: 50px 0 25px 0;
+            padding-bottom: 15px;
+            border-bottom: 3px solid #667eea;
+        }
+
+        h3 {
+            color: #2c3e50;
+            font-size: 1.3em;
+            margin: 30px 0 15px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        h3::before {
+            content: '▸';
+            color: #764ba2;
+            font-size: 1.2em;
+        }
+
+        /* File tree */
+        .file-tree {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 25px;
+            border-radius: 8px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.95em;
+            line-height: 1.8;
+            margin: 20px 0;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+
+        .file-new {
+            color: #48bb78;
+        }
+
+        .file-mod {
+            color: #ed8936;
+        }
+
+        /* Code blocks */
+        pre {
+            background: #1a202c;
+            color: #e2e8f0;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+            line-height: 1.6;
+            margin: 20px 0;
+        }
+
+        .env-block {
+            background: #1e3a8a;
+            color: #dbeafe;
+            padding: 25px;
+            border-radius: 8px;
+            font-family: 'Consolas', monospace;
+            margin: 20px 0;
+            border-left: 5px solid #3b82f6;
+            white-space: pre-wrap;
+            line-height: 1.8;
+        }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 25px 0;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        thead {
+            background: #667eea;
+            color: white;
+        }
+
+        th {
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #e2e8f0;
+            font-size: 0.95em;
+        }
+
+        tbody tr:hover {
+            background: #f7fafc;
+        }
+
+        tbody tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+
+        /* Message SMS column */
+        td.sms-message {
+            background: #f0fdf4;
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            color: #166534;
+            font-size: 0.9em;
+            line-height: 1.5;
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+
+        .badge-success {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .badge-warning {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .badge-info {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        /* Info boxes */
+        .info-box {
+            background: #eff6ff;
+            border-left: 4px solid #3b82f6;
+            padding: 20px;
+            margin: 25px 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .info-box strong {
+            color: #1e40af;
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        .service-description {
+            background: #f0fdf4;
+            border-left: 4px solid #22c55e;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        /* Print button */
+        .print-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 50px;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 1em;
+            z-index: 1000;
+            transition: all 0.3s;
+        }
+
+        .print-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+        }
+
+        /* Footer */
+        footer {
+            background: #2d3748;
+            color: #a0aec0;
+            text-align: center;
+            padding: 30px;
+            font-size: 0.9em;
+        }
+
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .container {
+                margin: 0;
+                border-radius: 0;
+                box-shadow: none;
+            }
+
+            header {
+                padding: 40px 20px;
+            }
+
+            h1 {
+                font-size: 1.8em;
+            }
+
+            .content {
+                padding: 25px 20px;
+            }
+
+            .summary-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            pre,
+            .file-tree,
+            .env-block {
+                padding: 15px;
+                font-size: 0.85em;
+                white-space: pre;
+                overflow-x: auto;
+            }
+
+            table {
+                display: block;
+                overflow-x: auto;
+                white-space: nowrap;
+            }
+
+            th,
+            td {
+                padding: 10px;
+            }
+
+            .print-btn {
+                bottom: 20px;
+                right: 20px;
+                padding: 12px 20px;
+                font-size: 0.9em;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .summary-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media print {
+            body {
+                background: white;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            .container {
+                box-shadow: none;
+                max-width: 100%;
+                margin: 0;
+                padding: 0;
+            }
+
+            /* Force header background to print */
+            header {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+                color: white !important;
+                padding: 40px !important;
+            }
+
+            h1,
+            .subtitle {
+                color: white !important;
+                -webkit-text-fill-color: white !important;
+            }
+
+            /* Ensure backgrounds print for components */
+            .badge,
+            .sms-message,
+            pre,
+            .file-tree,
+            .env-block,
+            .info-box,
+            .service-description,
+            .summary-grid,
+            .summary-item {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            /* Better page breaks */
+            h2,
+            h3 {
+                page-break-after: avoid;
+                page-break-inside: avoid;
+                margin-top: 40px;
+            }
+
+            pre,
+            .file-tree,
+            table,
+            .info-box,
+            .service-description {
+                page-break-inside: avoid;
+            }
+
+            .print-btn {
+                display: none !important;
+            }
+
+            /* Reset text colors if needed */
+            h2 {
+                color: #667eea !important;
+            }
+
+            h3 {
+                color: #2c3e50 !important;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <button class="print-btn" onclick="window.print()">🖨️ Imprimer / PDF</button>
+
+    <div class="container">
+        <header>
+            <h1>📊 PRÉSENTATION TECHNIQUE</h1>
+            <div class="subtitle">Intégration Système de Notifications SMS • DGTT</div>
+        </header>
+
+        <div class="summary-grid">
+            <div class="summary-item">
+                <strong>Projet</strong>
+                <span>Permis de Conduire</span>
+            </div>
+            <div class="summary-item">
+                <strong>Fournisseur</strong>
+                <span>Airtel Gabon</span>
+            </div>
+            <div class="summary-item">
+                <strong>Notifications</strong>
+                <span>12 types</span>
+            </div>
+            <div class="summary-item">
+                <strong>Statut</strong>
+                <span class="badge badge-success">✓ Déployé</span>
+            </div>
+        </div>
+
+        <div class="content">
+
+            <h2>1. INVENTAIRE DES FICHIERS</h2>
+
+            <h3>Fichiers Créés (Nouveaux - 7 fichiers)</h3>
+
+            <div class="file-tree"><strong class="file-new">[NOUVEAU]</strong> Services & Infrastructure
+                📁 app/Services/
+                └── AirtelSmsService.php <span class="file-new">← Moteur d'envoi SMS</span>
+
+                📁 app/Channels/
+                └── SmsChannel.php <span class="file-new">← Adaptateur Laravel</span>
+
+                <strong class="file-new">[NOUVEAU]</strong> Nouvelles Notifications
+                📁 app/Notifications/
+                ├── ExamenEchoueNotification.php
+                ├── RappelDocumentManquantNotification.php
+                ├── DateExamenProgrammeeNotification.php
+                └── PermisDisponibleNotification.php
+            </div>
+
+            <div class="service-description">
+                <strong>🔧 Rôle de AirtelSmsService.php :</strong>
+                <p>C'est le <strong>traducteur</strong>. Il prend un message simple et s'occupe de la complexité
+                    technique d'Airtel (Authentification sécurisée, Formatage ECP, Protocoles HTTPS). C'est lui qui
+                    transforme le <code>074...</code> en <code>24174...</code>.</p>
+            </div>
+
+            <div class="service-description">
+                <strong>🎯 Rôle de SmsChannel.php :</strong>
+                <p>C'est le <strong>chef d'orchestre</strong> intégré à Laravel. Il permet aux développeurs d'utiliser
+                    le SMS aussi simplement que l'Email, en ajoutant juste une ligne de code dans les notifications.</p>
+            </div>
+
+            <h3>Fichiers Modifiés (9 fichiers)</h3>
+            <div class="file-tree"><strong class="file-mod">[MIS À JOUR]</strong> 8 Notifications Existantes (+ SMS
+                ajouté)
+                📁 app/Notifications/
+                ├── AccountCreatedNotification.php <span class="file-mod">+ SMS</span>
+                ├── DocumentUploadedNotification.php <span class="file-mod">+ SMS</span>
+                ├── DocumentValidatedNotification.php <span class="file-mod">+ SMS</span>
+                ├── DocumentRejectedNotification.php <span class="file-mod">+ SMS</span>
+                ├── DossierCreatedNotification.php <span class="file-mod">+ SMS</span>
+                ├── DossierValidatedNotification.php <span class="file-mod">+ SMS</span>
+                ├── DossierRejectedNotification.php <span class="file-mod">+ SMS</span>
+                └── ExamenReussiNotification.php <span class="file-mod">+ SMS</span>
+
+                <strong class="file-mod">[MODIFIÉ]</strong> Correctif Critique
+                📁 app/Http/Controllers/Api/
+                └── AuthController.php <span class="file-mod">Fix rôle candidat</span>
+            </div>
+
+            <h2>2. CONFIGURATION PRODUCTION</h2>
+
+            <div class="info-box">
+                <strong>⚠️ IMPORTANT : Variables à copier dans .env de production</strong>
+                Ces configurations sont CRITIQUES pour le fonctionnement du système SMS en production.
+            </div>
+
+            <div class="env-block"># =======================================
+                # CONFIGURATION SMS AIRTEL GABON
+                # =======================================
+
+                # Endpoint API Enterprise Content Provider
+                AIRTEL_SMS_HOST=https://messaging.airtel.ga:9002/smshttpquery/qs
+
+                # Identifiants d'authentification
+                AIRTEL_SMS_USERNAME=RANGUS
+                AIRTEL_SMS_PASSWORD=Dec@9080
+
+                # Nom d'affichage (Expéditeur)
+                AIRTEL_SMS_SENDER_ID=DGTT
+
+                # Switch global (true en PROD, false en DEV)
+                AIRTEL_SMS_ENABLED=true
+
+                # =======================================</div>
+
+            <h2>3. LES 12 NOTIFICATIONS DÉTAILLÉES</h2>
+
+            <h3>Phase 1 : 8 Notifications Existantes (Mises à jour avec SMS)</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 5%">#</th>
+                        <th style="width: 22%">Fichier</th>
+                        <th style="width: 18%">Déclencheur</th>
+                        <th style="width: 55%">Message SMS Envoyé à l'Utilisateur</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>1</td>
+                        <td>AccountCreatedNotification</td>
+                        <td>Inscription</td>
+                        <td class="sms-message">DGTT - Bienvenue ! Votre compte a été créé avec succès. Code de
+                            vérification : 4829. Valable 10 minutes.</td>
+                    </tr>
+                    <tr>
+                        <td>2</td>
+                        <td>DocumentUploadedNotification</td>
+                        <td>Upload document</td>
+                        <td class="sms-message">DGTT - Document reçu avec succès. Votre CNI est en cours de vérification
+                            par notre équipe. Vous serez notifié du résultat.</td>
+                    </tr>
+                    <tr>
+                        <td>3</td>
+                        <td>DocumentValidatedNotification</td>
+                        <td>Validation admin</td>
+                        <td class="sms-message">DGTT - Excellente nouvelle ! Votre document CNI a été validé par notre
+                            service. Vous pouvez continuer votre dossier.</td>
+                    </tr>
+                    <tr>
+                        <td>4</td>
+                        <td>DocumentRejectedNotification</td>
+                        <td>Rejet admin</td>
+                        <td class="sms-message">DGTT - Document CNI refusé. Motif : Photo floue ou illisible. Veuillez
+                            télécharger une nouvelle photo claire. Merci.</td>
+                    </tr>
+                    <tr>
+                        <td>5</td>
+                        <td>DossierCreatedNotification</td>
+                        <td>Création dossier</td>
+                        <td class="sms-message">DGTT - Votre dossier de permis de conduire #D1234 a été créé avec
+                            succès. Prochaine étape : télécharger vos documents.</td>
+                    </tr>
+                    <tr>
+                        <td>6</td>
+                        <td>DossierValidatedNotification</td>
+                        <td>Acceptation</td>
+                        <td class="sms-message">DGTT - Félicitations ! Votre dossier complet a été validé. Vous serez
+                            convoqué(e) prochainement pour votre examen.</td>
+                    </tr>
+                    <tr>
+                        <td>7</td>
+                        <td>DossierRejectedNotification</td>
+                        <td>Refus</td>
+                        <td class="sms-message">DGTT - Votre dossier a été rejeté. Motif : Documents incomplets.
+                            Veuillez compléter les pièces manquantes dans votre espace.</td>
+                    </tr>
+                    <tr>
+                        <td>8</td>
+                        <td>ExamenReussiNotification</td>
+                        <td>Résultat positif</td>
+                        <td class="sms-message">DGTT - FÉLICITATIONS ! Vous avez réussi votre examen de Code de la route
+                            avec la note de 18/20. Prochaine étape : examen pratique.</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>Phase 2 : 4 Nouvelles Notifications</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 5%">#</th>
+                        <th style="width: 22%">Fichier</th>
+                        <th style="width: 18%">Déclencheur</th>
+                        <th style="width: 55%">Message SMS Envoyé à l'Utilisateur</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>9</td>
+                        <td>ExamenEchoueNotification</td>
+                        <td>Résultat négatif</td>
+                        <td class="sms-message">DGTT - Résultat examen Code : Malheureusement non acquis. Note obtenue :
+                            12/20 (minimum requis : 15/20). Ne vous découragez pas, vous pouvez repasser l'examen.</td>
+                    </tr>
+                    <tr>
+                        <td>10</td>
+                        <td>RappelDocumentManquantNotification</td>
+                        <td>Dossier incomplet</td>
+                        <td class="sms-message">DGTT - Rappel important : Votre dossier est incomplet. Il manque 2
+                            documents (Certificat médical, Photo). Veuillez les uploader rapidement pour éviter tout
+                            retard.</td>
+                    </tr>
+                    <tr>
+                        <td>11</td>
+                        <td>DateExamenProgrammeeNotification</td>
+                        <td>Planification</td>
+                        <td class="sms-message">DGTT - CONVOCATION OFFICIELLE : Examen Code de la route programmé le
+                            25/01/2026 à 10h00. Lieu : Centre d'examen Owendo. Merci d'arriver 15min en avance avec
+                            votre pièce d'identité.</td>
+                    </tr>
+                    <tr>
+                        <td>12</td>
+                        <td>PermisDisponibleNotification</td>
+                        <td>Production permis</td>
+                        <td class="sms-message">DGTT - Bonne nouvelle ! Votre permis de conduire définitif est
+                            disponible pour retrait au siège DGTT Libreville. Horaires : Lun-Ven 8h-16h. Munissez-vous
+                            de votre pièce d'identité.</td>
+                    </tr>
+                </tbody>
+            </table>
+
+
+
+
+
+            <h2>4. ARCHITECTURE TECHNIQUE DÉTAILLÉE</h2>
+
+            <h3>4.1 Le Moteur (Le Service)</h3>
+            <div class="file-tree">
+                <strong>Fichier :</strong> <code>app/Services/AirtelSmsService.php</code>
+            </div>
+            <p>Son rôle est d'agir comme <strong>traducteur</strong> entre l'application et l'API Airtel.</p>
+            <ul>
+                <li>Authentification sécurisée (Gateway Airtel)</li>
+                <li>Formatage ECP (Enterprise Content Provider)</li>
+                <li>Protocoles HTTPS et Gestion des certificats</li>
+                <li>Normalisation : transforme <code>074...</code> en <code>24174...</code></li>
+            </ul>
+
+            <h3>4.2 L'Adaptateur (Le Channel)</h3>
+            <div class="file-tree">
+                <strong>Fichier :</strong> <code>app/Channels/SmsChannel.php</code>
+            </div>
+            <p>Son rôle est d'être le <strong>chef d'orchestre</strong> intégré à Laravel. Il permet d'utiliser le SMS
+                aussi simplement que l'email via <code>SmsChannel::class</code>.</p>
+
+            <h3>4.3 Le Pattern d'Implémentation</h3>
+            <p>Toutes les notifications suivent ce modèle strict :</p>
+            <pre>namespace App\Notifications;
+use App\Channels\SmsChannel;
+use App\Services\AirtelSmsService;
+
+class ExempleNotification extends Notification
+{
+    public function via($notifiable)
+    {
+        return ['database', 'mail', SmsChannel::class];
+    }
+
+    public function toSms($notifiable)
+    {
+        try {
+            $phone = $notifiable->telephone ?? $notifiable->personne?->contact;
+            if (!$phone) return;
+
+            $service = new AirtelSmsService();
+            $service->send($phone, "Message DGTT");
+        } catch (\Exception $e) {
+            Log::error("SMS Error: " . $e->getMessage());
+        }
+    }
+}</pre>
+
+            <h2>5. TESTS & VALIDATION</h2>
+
+            <h3>5.1 Script de Test Manuel</h3>
+            <div class="info-box">
+                <strong>Commande :</strong> <code>php test_all_notifications.php</code>
+            </div>
+            <p>Ce script simule l'envoi des 12 types de notifications vers un numéro de test, sans créer de données
+                fictives en base.</p>
+
+            <h3>5.2 Logs de Diagnostic</h3>
+            <p>Fichier : <code>storage/logs/laravel.log</code></p>
+            <pre>tail -f storage/logs/laravel.log | grep "\[SMS\]"</pre>
+            <p><strong>Codes d'erreur Airtel :</strong></p>
+            <ul>
+                <li><code>+OK &lt;ID&gt;</code> : Succès</li>
+                <li><code>ERR: 101</code> : Authentification invalide</li>
+                <li><code>ERR: 106</code> : Numéro invalide</li>
+                <li><code>ERR: 301</code> : Crédit épuisé</li>
+            </ul>
+
+
+            <h2>6. FRONTEND (REACT)</h2>
+
+            <p>Le Frontend a été analysé pour assurer une UX cohérente.</p>
+
+            <h3>6.1 Fichiers Analysés</h3>
+            <ul>
+                <li><code>src/services/registerService.ts</code></li>
+                <li><code>src/services/loginService.ts</code></li>
+            </ul>
+
+            <h3>6.2 Pattern d'Intégration</h3>
+            <p>Le Frontend affiche une notification "Toast" quand le SMS est envoyé :</p>
+            <pre>const response = await api.post('/endpoint', data);
+
+if (response.data.success) {
+    // Vérifier si SMS envoyé
+    const smsSent = response.data.verification?.channels?.some(
+        c => c.method === 'sms' && c.sent
+    );
+    
+    if (smsSent) {
+        toast.success("✓ Demande enregistrée ! Un SMS de confirmation a été envoyé.");
+    }
+}</pre>
+
+            <h2>7. COMMENT INTÉGRER UN NOUVEAU SMS ?</h2>
+
+            <div class="info-box" style="background: #fdf2f8; border-color: #db2777;">
+                <strong>Guide Développeur Rapide</strong>
+                Suivez ces 3 étapes pour ajouter une notification SMS à n'importe quelle classe existante.
+            </div>
+
+            <h3>Étape 1 : Les Imports</h3>
+            <p><strong>Fichier cible :</strong> <code>app/Notifications/VotreNotification.php</code></p>
+            <p>Ajoutez ces lignes en haut de votre fichier, sous le namespace :</p>
+            <pre>use App\Channels\SmsChannel;
+use App\Services\AirtelSmsService;
+use Illuminate\Support\Facades\Log;</pre>
+
+            <h3>Étape 2 : Activation du Canal</h3>
+            <p><strong>Fichier cible :</strong> <code>app/Notifications/VotreNotification.php</code></p>
+            <p>Ajoutez <code>SmsChannel::class</code> dans la méthode <code>via()</code> :</p>
+            <pre>public function via($notifiable)
+{
+    return ['mail', 'database', SmsChannel::class];
+}</pre>
+
+            <h3>Étape 3 : Le Modèle Standard</h3>
+            <p><strong>Fichier cible :</strong> <code>app/Notifications/VotreNotification.php</code></p>
+            <p>Copiez-collez la méthode <code>toSms()</code> :</p>
+            <pre>public function toSms($notifiable)
+{
+    try {
+        // 1. Récupérer le téléphone
+        $phone = $notifiable->telephone ?? $notifiable->personne?->contact;
+
+        if (!$phone) return;
+
+        // 2. Envoyer
+        $service = new AirtelSmsService();
+        $service->send($phone, "DGTT - Votre message ici.");
+
+    } catch (\Exception $e) {
+        Log::error("[SMS ERROR] " . $e->getMessage());
+    }
+}</pre>
+
+            <h2>8. CONCLUSION</h2>
+
+            <div class="info-box">
+                <strong>✅ Livraison Complète</strong>
+                Le système est opérationnel avec 12 scénarios de notifications SMS.
+            </div>
+
+        </div>
+
+        <footer>
+            Document de Présentation Technique • Direction Générale des Transports Terrestres • Janvier 2026
+        </footer>
+    </div>
+
+</body>
+
+</html>

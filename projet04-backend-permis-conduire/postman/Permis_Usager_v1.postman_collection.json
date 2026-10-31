@@ -1,0 +1,148 @@
+{
+	"info": {
+		"_postman_id": "a1b2c3d4-permis-usager-v1",
+		"name": "Permis — usager v1 (X-API-KEY)",
+		"description": "GET /api/v1/permis/usager — recherche par nom, prénom, date_naissance, numero_permis (+ nip optionnel).\n\nVariables : `api_host`, `api_port`, `public_api_key`, `nom`, `prenom`, `date_naissance`, `numero_permis`, `nip` (vide = pas de filtre NIP si tu désactives la ligne dans Params).\n\nREADME : README_API_PERMIS_USAGER_V1.md",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "api_host",
+			"value": "127.0.0.1"
+		},
+		{
+			"key": "api_port",
+			"value": "8000"
+		},
+		{
+			"key": "public_api_key",
+			"value": ""
+		},
+		{
+			"key": "nom",
+			"value": "Petit"
+		},
+		{
+			"key": "prenom",
+			"value": "Thomas"
+		},
+		{
+			"key": "date_naissance",
+			"value": "1992-07-20"
+		},
+		{
+			"key": "numero_permis",
+			"value": "REMPLACER_NUMERO_EXACT_DOSSIER"
+		},
+		{
+			"key": "nip",
+			"value": "9876543210987"
+		}
+	],
+	"item": [
+		{
+			"name": "Rechercher usager + permis (v1)",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "X-API-KEY",
+						"value": "{{public_api_key}}",
+						"type": "text"
+					},
+					{
+						"key": "Accept",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "http://{{api_host}}:{{api_port}}/api/v1/permis/usager?nom={{nom}}&prenom={{prenom}}&date_naissance={{date_naissance}}&numero_permis={{numero_permis}}&nip={{nip}}",
+					"protocol": "http",
+					"host": [
+						"{{api_host}}"
+					],
+					"port": "{{api_port}}",
+					"path": [
+						"api",
+						"v1",
+						"permis",
+						"usager"
+					],
+					"query": [
+						{
+							"key": "nom",
+							"value": "{{nom}}"
+						},
+						{
+							"key": "prenom",
+							"value": "{{prenom}}"
+						},
+						{
+							"key": "date_naissance",
+							"value": "{{date_naissance}}"
+						},
+						{
+							"key": "numero_permis",
+							"value": "{{numero_permis}}"
+						},
+						{
+							"key": "nip",
+							"value": "{{nip}}",
+							"disabled": false
+						}
+					]
+				},
+				"description": "Retourne identité + permis. `numero_permis` doit correspondre exactement à un dossier du candidat. Désactive la ligne query `nip` si tu ne veux pas filtrer par NIP."
+			},
+			"response": []
+		},
+		{
+			"name": "Sans X-API-KEY (contrôle 401)",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Accept",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "http://{{api_host}}:{{api_port}}/api/v1/permis/usager?nom={{nom}}&prenom={{prenom}}&date_naissance={{date_naissance}}&numero_permis={{numero_permis}}",
+					"protocol": "http",
+					"host": [
+						"{{api_host}}"
+					],
+					"port": "{{api_port}}",
+					"path": [
+						"api",
+						"v1",
+						"permis",
+						"usager"
+					],
+					"query": [
+						{
+							"key": "nom",
+							"value": "{{nom}}"
+						},
+						{
+							"key": "prenom",
+							"value": "{{prenom}}"
+						},
+						{
+							"key": "date_naissance",
+							"value": "{{date_naissance}}"
+						},
+						{
+							"key": "numero_permis",
+							"value": "{{numero_permis}}"
+						}
+					]
+				},
+				"description": "Attendu : HTTP **401**."
+			},
+			"response": []
+		}
+	]
+}

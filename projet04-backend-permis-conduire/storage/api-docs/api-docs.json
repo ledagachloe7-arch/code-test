@@ -1,0 +1,2480 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+        "title": "🚗 Auto-École API - Authentification Authentik",
+        "description": "API complète pour la gestion de l'authentification avec Authentik comme IAM central. Cette API permet l'inscription, la connexion, la gestion des utilisateurs et des tokens avec un système de contournement du Password Grant Flow.",
+        "contact": {
+            "name": "Support Auto-École API",
+            "url": "https://auto-ecole-api.com",
+            "email": "support@auto-ecole-api.com"
+        },
+        "license": {
+            "name": "MIT",
+            "url": "https://opensource.org/licenses/MIT"
+        },
+        "version": "1.0.0"
+    },
+    "servers": [
+        {
+            "url": "http://localhost:8000",
+            "description": "Serveur de développement local"
+        },
+        {
+            "url": "https://9c8r7bbvybn.preview.infomaniak.website",
+            "description": "Serveur de production Infomaniak"
+        },
+        {
+            "url": "http://localhost:8000",
+            "description": "Serveur de développement local"
+        },
+        {
+            "url": "https://9c8r7bbvybn.preview.infomaniak.website",
+            "description": "Serveur de production Infomaniak"
+        },
+        {
+            "url": "http://localhost:8000",
+            "description": "Serveur de développement local"
+        },
+        {
+            "url": "https://9c8r7bbvybn.preview.infomaniak.website",
+            "description": "Serveur de production Infomaniak"
+        },
+        {
+            "url": "http://localhost:8000",
+            "description": "Serveur de développement local"
+        },
+        {
+            "url": "https://9c8r7bbvybn.preview.infomaniak.website",
+            "description": "Serveur de production Infomaniak"
+        },
+        {
+            "url": "http://localhost:8000",
+            "description": "Serveur de développement local"
+        },
+        {
+            "url": "https://9c8r7bbvybn.preview.infomaniak.website",
+            "description": "Serveur de production Infomaniak"
+        },
+        {
+            "url": "http://localhost:8000",
+            "description": "Serveur de développement local"
+        },
+        {
+            "url": "https://9c8r7bbvybn.preview.infomaniak.website",
+            "description": "Serveur de production Infomaniak"
+        },
+        {
+            "url": "http://localhost:8000",
+            "description": "Serveur de développement local"
+        },
+        {
+            "url": "https://9c8r7bbvybn.preview.infomaniak.website",
+            "description": "Serveur de production Infomaniak"
+        }
+    ],
+    "paths": {
+        "/api/auth/register": {
+            "post": {
+                "tags": [
+                    "🔐 Authentification"
+                ],
+                "summary": "📝 Inscription d'un nouvel utilisateur",
+                "description": "Crée un nouvel utilisateur dans Authentik et dans la base de données locale. Retourne l'URL d'authentification pour que l'utilisateur puisse se connecter.",
+                "operationId": "registerUser",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "email",
+                                    "password",
+                                    "password_confirmation",
+                                    "nom",
+                                    "prenom",
+                                    "contact",
+                                    "role"
+                                ],
+                                "properties": {
+                                    "email": {
+                                        "type": "string",
+                                        "format": "email",
+                                        "example": "jean.dupont@example.com"
+                                    },
+                                    "password": {
+                                        "type": "string",
+                                        "format": "password",
+                                        "example": "Password123!"
+                                    },
+                                    "password_confirmation": {
+                                        "type": "string",
+                                        "format": "password",
+                                        "example": "Password123!"
+                                    },
+                                    "nom": {
+                                        "type": "string",
+                                        "example": "Dupont"
+                                    },
+                                    "prenom": {
+                                        "type": "string",
+                                        "example": "Jean"
+                                    },
+                                    "contact": {
+                                        "type": "string",
+                                        "example": "0612345678"
+                                    },
+                                    "adresse": {
+                                        "type": "string",
+                                        "example": "123 Rue de la Paix, Paris",
+                                        "nullable": true
+                                    },
+                                    "role": {
+                                        "type": "string",
+                                        "enum": [
+                                            "candidat",
+                                            "responsable_auto_ecole",
+                                            "admin"
+                                        ],
+                                        "example": "candidat"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "✅ Inscription réussie",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Inscription réussie. Redirigez l'utilisateur vers Authentik pour se connecter."
+                                        },
+                                        "user": {
+                                            "properties": {
+                                                "id": {
+                                                    "type": "string",
+                                                    "example": "019a0e63-a1cd-7012-9586-57868bb66c6f"
+                                                },
+                                                "email": {
+                                                    "type": "string",
+                                                    "example": "jean.dupont@example.com"
+                                                },
+                                                "role": {
+                                                    "type": "string",
+                                                    "example": "candidat"
+                                                },
+                                                "created_at": {
+                                                    "type": "string",
+                                                    "format": "date-time",
+                                                    "example": "2025-10-23T00:00:00+00:00"
+                                                },
+                                                "personne": {
+                                                    "properties": {
+                                                        "id": {
+                                                            "type": "string",
+                                                            "example": "019a0e63-a1cd-7012-9586-57868bb66c6f"
+                                                        },
+                                                        "nom": {
+                                                            "type": "string",
+                                                            "example": "Dupont"
+                                                        },
+                                                        "prenom": {
+                                                            "type": "string",
+                                                            "example": "Jean"
+                                                        },
+                                                        "nom_complet": {
+                                                            "type": "string",
+                                                            "example": "Jean Dupont"
+                                                        },
+                                                        "email": {
+                                                            "type": "string",
+                                                            "example": "jean.dupont@example.com"
+                                                        },
+                                                        "contact": {
+                                                            "type": "string",
+                                                            "example": "0612345678"
+                                                        },
+                                                        "adresse": {
+                                                            "type": "string",
+                                                            "example": "123 Rue de la Paix, Paris"
+                                                        }
+                                                    },
+                                                    "type": "object"
+                                                }
+                                            },
+                                            "type": "object"
+                                        },
+                                        "auth_url": {
+                                            "type": "string",
+                                            "example": "http://5.189.156.115:31015/application/o/authorize/?client_id=..."
+                                        },
+                                        "authentik": {
+                                            "properties": {
+                                                "user_id": {
+                                                    "type": "integer",
+                                                    "example": 28
+                                                },
+                                                "username": {
+                                                    "type": "string",
+                                                    "example": "jean.dupont@example.com"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "❌ Erreur de validation",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": false
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Les données fournies ne sont pas valides."
+                                        },
+                                        "errors": {
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "❌ Erreur serveur"
+                    }
+                }
+            }
+        },
+        "/api/auth/login-direct": {
+            "post": {
+                "tags": [
+                    "🔐 Authentification"
+                ],
+                "summary": "🚀 Connexion directe (Contournement Password Grant)",
+                "description": "Authentifie un utilisateur directement via l'API Authentik en contournant le problème du Password Grant Flow. Cette méthode utilise l'API Authentik directement pour vérifier les identifiants et génère des tokens personnalisés.",
+                "operationId": "loginDirect",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "email",
+                                    "password"
+                                ],
+                                "properties": {
+                                    "email": {
+                                        "type": "string",
+                                        "format": "email",
+                                        "example": "jean.dupont@example.com"
+                                    },
+                                    "password": {
+                                        "type": "string",
+                                        "format": "password",
+                                        "example": "Password123!"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "✅ Connexion réussie",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Connexion réussie !"
+                                        },
+                                        "user": {
+                                            "properties": {
+                                                "id": {
+                                                    "type": "string",
+                                                    "example": "019a0e34-d153-7330-8cb6-80b14fd8811c"
+                                                },
+                                                "email": {
+                                                    "type": "string",
+                                                    "example": "jean.dupont@example.com"
+                                                },
+                                                "role": {
+                                                    "type": "string",
+                                                    "example": "candidat"
+                                                },
+                                                "created_at": {
+                                                    "type": "string",
+                                                    "format": "date-time",
+                                                    "example": "2025-10-23T00:00:00+00:00"
+                                                },
+                                                "personne": {
+                                                    "properties": {
+                                                        "id": {
+                                                            "type": "string",
+                                                            "example": "019a0e34-d153-7330-8cb6-80b14fd8811c"
+                                                        },
+                                                        "nom": {
+                                                            "type": "string",
+                                                            "example": "Dupont"
+                                                        },
+                                                        "prenom": {
+                                                            "type": "string",
+                                                            "example": "Jean"
+                                                        },
+                                                        "nom_complet": {
+                                                            "type": "string",
+                                                            "example": "Jean Dupont"
+                                                        },
+                                                        "email": {
+                                                            "type": "string",
+                                                            "example": "jean.dupont@example.com"
+                                                        },
+                                                        "contact": {
+                                                            "type": "string",
+                                                            "example": "0612345678"
+                                                        },
+                                                        "adresse": {
+                                                            "type": "string",
+                                                            "example": "123 Rue de la Paix, Paris"
+                                                        }
+                                                    },
+                                                    "type": "object"
+                                                }
+                                            },
+                                            "type": "object"
+                                        },
+                                        "access_token": {
+                                            "type": "string",
+                                            "example": "eyJ1c2VyX2lkIjoyOCwiZW1haWwiOi..."
+                                        },
+                                        "refresh_token": {
+                                            "type": "string",
+                                            "example": "eyJ1c2VyX2lkIjoyOCwidHlwZSI6In..."
+                                        },
+                                        "token_type": {
+                                            "type": "string",
+                                            "example": "Bearer"
+                                        },
+                                        "expires_in": {
+                                            "type": "integer",
+                                            "example": 3600
+                                        },
+                                        "method": {
+                                            "type": "string",
+                                            "example": "direct_auth"
+                                        },
+                                        "authentik": {
+                                            "properties": {
+                                                "user_id": {
+                                                    "type": "integer",
+                                                    "example": 28
+                                                },
+                                                "username": {
+                                                    "type": "string",
+                                                    "example": "jean.dupont@example.com"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "❌ Identifiants incorrects",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": false
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Identifiants incorrects. Veuillez vérifier votre email et mot de passe."
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "❌ Erreur de validation"
+                    },
+                    "500": {
+                        "description": "❌ Erreur serveur"
+                    }
+                }
+            }
+        },
+        "/api/auth/auth-url": {
+            "get": {
+                "tags": [
+                    "🔐 Authentification"
+                ],
+                "summary": "🔗 Obtenir l'URL d'authentification",
+                "description": "Génère l'URL d'authentification pour l'Authorization Code Flow avec Authentik. Cette URL doit être utilisée pour rediriger l'utilisateur vers Authentik pour s'authentifier.",
+                "operationId": "getAuthUrl",
+                "responses": {
+                    "200": {
+                        "description": "✅ URL d'authentification générée",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "auth_url": {
+                                            "type": "string",
+                                            "example": "http://5.189.156.115:31015/application/o/authorize/?client_id=..."
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Redirigez l'utilisateur vers cette URL pour s'authentifier."
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "❌ Erreur serveur"
+                    }
+                }
+            }
+        },
+        "/api/auth/authentik/redirect": {
+            "get": {
+                "tags": [
+                    "🔐 Authentification"
+                ],
+                "summary": "🔄 Redirection vers Authentik",
+                "description": "Redirige l'utilisateur vers Authentik pour l'authentification OAuth.",
+                "operationId": "redirectToAuthentik",
+                "responses": {
+                    "302": {
+                        "description": "🔄 Redirection vers Authentik"
+                    },
+                    "500": {
+                        "description": "❌ Erreur serveur"
+                    }
+                }
+            }
+        },
+        "/api/auth/authentik/callback": {
+            "get": {
+                "tags": [
+                    "🔐 Authentification"
+                ],
+                "summary": "📞 Callback d'authentification Authentik",
+                "description": "Gère le callback d'authentification après que l'utilisateur s'est connecté sur Authentik.",
+                "operationId": "handleAuthentikCallback",
+                "parameters": [
+                    {
+                        "name": "code",
+                        "in": "query",
+                        "description": "Code d'autorisation fourni par Authentik",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "✅ Authentification réussie",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Authentification réussie."
+                                        },
+                                        "user": {
+                                            "type": "object"
+                                        },
+                                        "access_token": {
+                                            "type": "string"
+                                        },
+                                        "token_type": {
+                                            "type": "string",
+                                            "example": "Bearer"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "❌ Erreur de callback"
+                    },
+                    "500": {
+                        "description": "❌ Erreur serveur"
+                    }
+                }
+            }
+        },
+        "/api/auth/logout": {
+            "post": {
+                "tags": [
+                    "🔄 Tokens"
+                ],
+                "summary": "🚪 Déconnexion de l'utilisateur",
+                "description": "Déconnecte l'utilisateur en révoquant ses tokens d'accès et de rafraîchissement dans Authentik.",
+                "operationId": "logoutUser",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "refresh_token": {
+                                        "type": "string",
+                                        "example": "eyJ1c2VyX2lkIjoyOCwidHlwZSI6In..."
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "✅ Déconnexion réussie",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Déconnexion réussie. À bientôt !"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "❌ Token manquant"
+                    },
+                    "500": {
+                        "description": "❌ Erreur serveur"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/auth/refresh": {
+            "post": {
+                "tags": [
+                    "🔄 Tokens"
+                ],
+                "summary": "🔄 Rafraîchir le token d'accès",
+                "description": "Renouvelle le token d'accès en utilisant le token de rafraîchissement.",
+                "operationId": "refreshToken",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "refresh_token"
+                                ],
+                                "properties": {
+                                    "refresh_token": {
+                                        "type": "string",
+                                        "example": "eyJ1c2VyX2lkIjoyOCwidHlwZSI6In..."
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "✅ Token rafraîchi avec succès",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Token rafraîchi avec succès."
+                                        },
+                                        "access_token": {
+                                            "type": "string"
+                                        },
+                                        "refresh_token": {
+                                            "type": "string"
+                                        },
+                                        "token_type": {
+                                            "type": "string",
+                                            "example": "Bearer"
+                                        },
+                                        "expires_in": {
+                                            "type": "integer",
+                                            "example": 3600
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "❌ Refresh token manquant"
+                    },
+                    "401": {
+                        "description": "❌ Refresh token invalide"
+                    },
+                    "500": {
+                        "description": "❌ Erreur serveur"
+                    }
+                }
+            }
+        },
+        "/api/auto-ecoles": {
+            "get": {
+                "tags": [
+                    "🏫 Auto-Écoles"
+                ],
+                "summary": "📋 Liste de toutes les auto-écoles",
+                "description": "Récupère la liste paginée de toutes les auto-écoles",
+                "operationId": "getAutoEcoles",
+                "parameters": [
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "statut",
+                        "in": "query",
+                        "description": "Filtrer par statut",
+                        "schema": {
+                            "type": "boolean"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "✅ Liste des auto-écoles"
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "🏫 Auto-Écoles"
+                ],
+                "summary": "➕ Créer une auto-école",
+                "description": "Crée une nouvelle auto-école",
+                "operationId": "storeAutoEcole",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "nom_auto_ecole",
+                                    "email",
+                                    "responsable_id",
+                                    "contact"
+                                ],
+                                "properties": {
+                                    "nom_auto_ecole": {
+                                        "type": "string",
+                                        "example": "Auto-École Excellence"
+                                    },
+                                    "adresse": {
+                                        "type": "string",
+                                        "example": "123 Avenue Principale"
+                                    },
+                                    "email": {
+                                        "type": "string",
+                                        "example": "contact@excellence.com"
+                                    },
+                                    "responsable_id": {
+                                        "type": "string",
+                                        "format": "uuid"
+                                    },
+                                    "contact": {
+                                        "type": "string",
+                                        "example": "0612345678"
+                                    },
+                                    "statut": {
+                                        "type": "boolean",
+                                        "example": true
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "✅ Auto-école créée"
+                    },
+                    "422": {
+                        "description": "❌ Erreur de validation"
+                    }
+                }
+            }
+        },
+        "/api/auto-ecoles/{id}": {
+            "get": {
+                "tags": [
+                    "🏫 Auto-Écoles"
+                ],
+                "summary": "🔍 Détails d'une auto-école",
+                "description": "Récupère les détails complets d'une auto-école",
+                "operationId": "getAutoEcole",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "✅ Détails de l'auto-école"
+                    },
+                    "404": {
+                        "description": "❌ Auto-école non trouvée"
+                    }
+                }
+            },
+            "put": {
+                "tags": [
+                    "🏫 Auto-Écoles"
+                ],
+                "summary": "✏️ Mettre à jour une auto-école",
+                "operationId": "updateAutoEcole",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "nom_auto_ecole": {
+                                        "type": "string"
+                                    },
+                                    "adresse": {
+                                        "type": "string"
+                                    },
+                                    "contact": {
+                                        "type": "string"
+                                    },
+                                    "statut": {
+                                        "type": "boolean"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "✅ Auto-école mise à jour"
+                    },
+                    "404": {
+                        "description": "❌ Auto-école non trouvée"
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "🏫 Auto-Écoles"
+                ],
+                "summary": "🗑️ Supprimer une auto-école",
+                "operationId": "deleteAutoEcole",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "✅ Auto-école supprimée"
+                    },
+                    "404": {
+                        "description": "❌ Auto-école non trouvée"
+                    }
+                }
+            }
+        },
+        "/api/auto-ecoles/{id}/formations": {
+            "get": {
+                "tags": [
+                    "🏫 Auto-Écoles"
+                ],
+                "summary": "📚 Formations d'une auto-école",
+                "description": "Récupère toutes les formations actives proposées par une auto-école",
+                "operationId": "getFormationsAutoEcole",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "✅ Liste des formations",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "auto_ecole": {
+                                            "type": "object"
+                                        },
+                                        "formations": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object"
+                                            }
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "❌ Auto-école non trouvée"
+                    }
+                }
+            }
+        },
+        "/api/auto-ecoles/mes-dossiers": {
+            "get": {
+                "tags": [
+                    "🏫 Auto-Écoles"
+                ],
+                "summary": "📁 Dossiers de mon auto-école",
+                "description": "Récupère tous les dossiers de l'auto-école du responsable connecté",
+                "operationId": "mesDossiersAutoEcole",
+                "parameters": [
+                    {
+                        "name": "statut",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "✅ Liste des dossiers",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "auto_ecole": {
+                                            "type": "object"
+                                        },
+                                        "dossiers": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object"
+                                            }
+                                        },
+                                        "statistiques": {
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "❌ Pas d'auto-école associée"
+                    },
+                    "401": {
+                        "description": "❌ Non authentifié"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/candidats": {
+            "get": {
+                "tags": [
+                    "👨‍🎓 Candidats"
+                ],
+                "summary": "📋 Liste de tous les candidats",
+                "description": "Récupère la liste paginée de tous les candidats avec leurs informations personnelles",
+                "operationId": "getCandidats",
+                "parameters": [
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "description": "Numéro de page",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "example": 1
+                        }
+                    },
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "description": "Nombre d'éléments par page",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "example": 15
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "✅ Liste des candidats récupérée"
+                    },
+                    "401": {
+                        "description": "❌ Non authentifié"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "👨‍🎓 Candidats"
+                ],
+                "summary": "➕ Créer un nouveau candidat",
+                "description": "Crée un nouveau candidat avec ses informations personnelles",
+                "operationId": "storeCandidat",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "personne_id",
+                                    "numero_candidat",
+                                    "date_naissance",
+                                    "lieu_naissance",
+                                    "nip",
+                                    "type_piece",
+                                    "numero_piece",
+                                    "nationalite",
+                                    "genre"
+                                ],
+                                "properties": {
+                                    "personne_id": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "example": "019a0e34-d153-7330-8cb6-80b14fd8811c"
+                                    },
+                                    "numero_candidat": {
+                                        "type": "string",
+                                        "example": "CAN-2025-001"
+                                    },
+                                    "date_naissance": {
+                                        "type": "string",
+                                        "format": "date",
+                                        "example": "1995-05-15"
+                                    },
+                                    "lieu_naissance": {
+                                        "type": "string",
+                                        "example": "Dakar"
+                                    },
+                                    "nip": {
+                                        "type": "string",
+                                        "example": "1234567890123"
+                                    },
+                                    "type_piece": {
+                                        "type": "string",
+                                        "example": "CNI"
+                                    },
+                                    "numero_piece": {
+                                        "type": "string",
+                                        "example": "1234567890"
+                                    },
+                                    "nationalite": {
+                                        "type": "string",
+                                        "example": "Sénégalaise"
+                                    },
+                                    "genre": {
+                                        "type": "string",
+                                        "enum": [
+                                            "M",
+                                            "F"
+                                        ],
+                                        "example": "M"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "✅ Candidat créé avec succès"
+                    },
+                    "401": {
+                        "description": "❌ Non authentifié"
+                    },
+                    "422": {
+                        "description": "❌ Erreur de validation"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/candidats/{id}": {
+            "get": {
+                "tags": [
+                    "👨‍🎓 Candidats"
+                ],
+                "summary": "🔍 Détails d'un candidat",
+                "description": "Récupère les détails complets d'un candidat",
+                "operationId": "getCandidat",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "ID du candidat",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "✅ Détails du candidat"
+                    },
+                    "404": {
+                        "description": "❌ Candidat non trouvé"
+                    }
+                }
+            },
+            "put": {
+                "tags": [
+                    "👨‍🎓 Candidats"
+                ],
+                "summary": "✏️ Mettre à jour un candidat",
+                "description": "Met à jour les informations d'un candidat",
+                "operationId": "updateCandidat",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "ID du candidat",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "numero_candidat": {
+                                        "type": "string",
+                                        "example": "CAN-2025-001"
+                                    },
+                                    "date_naissance": {
+                                        "type": "string",
+                                        "format": "date",
+                                        "example": "1995-05-15"
+                                    },
+                                    "lieu_naissance": {
+                                        "type": "string",
+                                        "example": "Dakar"
+                                    },
+                                    "type_piece": {
+                                        "type": "string",
+                                        "example": "CNI"
+                                    },
+                                    "numero_piece": {
+                                        "type": "string",
+                                        "example": "1234567890"
+                                    },
+                                    "nationalite": {
+                                        "type": "string",
+                                        "example": "Sénégalaise"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "✅ Candidat mis à jour"
+                    },
+                    "404": {
+                        "description": "❌ Candidat non trouvé"
+                    },
+                    "422": {
+                        "description": "❌ Erreur de validation"
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "👨‍🎓 Candidats"
+                ],
+                "summary": "🗑️ Supprimer un candidat",
+                "description": "Supprime un candidat et ses dossiers associés",
+                "operationId": "deleteCandidat",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "ID du candidat",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "✅ Candidat supprimé",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Candidat supprimé avec succès."
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "❌ Candidat non trouvé"
+                    }
+                }
+            }
+        },
+        "/api/candidats/complete-profile": {
+            "post": {
+                "tags": [
+                    "👨‍🎓 Candidats"
+                ],
+                "summary": "✅ Compléter le profil candidat",
+                "description": "Permet à un utilisateur connecté de compléter son profil candidat avec ses informations personnelles",
+                "operationId": "completeProfile",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "date_naissance",
+                                    "lieu_naissance",
+                                    "nip",
+                                    "type_piece",
+                                    "numero_piece",
+                                    "nationalite",
+                                    "genre"
+                                ],
+                                "properties": {
+                                    "date_naissance": {
+                                        "type": "string",
+                                        "format": "date",
+                                        "example": "1995-05-15"
+                                    },
+                                    "lieu_naissance": {
+                                        "type": "string",
+                                        "example": "Dakar"
+                                    },
+                                    "nip": {
+                                        "type": "string",
+                                        "example": "1234567890123"
+                                    },
+                                    "type_piece": {
+                                        "type": "string",
+                                        "example": "CNI"
+                                    },
+                                    "numero_piece": {
+                                        "type": "string",
+                                        "example": "1234567890"
+                                    },
+                                    "nationalite": {
+                                        "type": "string",
+                                        "example": "Sénégalaise"
+                                    },
+                                    "genre": {
+                                        "type": "string",
+                                        "enum": [
+                                            "M",
+                                            "F"
+                                        ],
+                                        "example": "M"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "✅ Profil candidat complété"
+                    },
+                    "400": {
+                        "description": "❌ Profil déjà complété"
+                    },
+                    "401": {
+                        "description": "❌ Non authentifié"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/candidats/inscription-formation": {
+            "post": {
+                "tags": [
+                    "👨‍🎓 Candidats"
+                ],
+                "summary": "🎓 S'inscrire à une formation",
+                "description": "Permet à un candidat de s'inscrire à une formation dans une auto-école. Crée automatiquement un dossier.",
+                "operationId": "inscriptionFormation",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "auto_ecole_id",
+                                    "formation_id"
+                                ],
+                                "properties": {
+                                    "auto_ecole_id": {
+                                        "type": "string",
+                                        "format": "uuid"
+                                    },
+                                    "formation_id": {
+                                        "type": "string",
+                                        "format": "uuid"
+                                    },
+                                    "commentaires": {
+                                        "type": "string",
+                                        "example": "Je souhaite commencer dès que possible"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "✅ Inscription réussie",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Inscription à la formation réussie !"
+                                        },
+                                        "dossier": {
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "❌ Candidat non trouvé ou déjà inscrit"
+                    },
+                    "404": {
+                        "description": "❌ Formation non trouvée"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/candidats/mes-dossiers": {
+            "get": {
+                "tags": [
+                    "👨‍🎓 Candidats"
+                ],
+                "summary": "📁 Mes dossiers",
+                "description": "Récupère tous les dossiers du candidat connecté",
+                "operationId": "mesDossiers",
+                "responses": {
+                    "200": {
+                        "description": "✅ Liste des dossiers du candidat",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "dossiers": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object"
+                                            }
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "❌ Profil candidat non complété"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/documents": {
+            "get": {
+                "tags": [
+                    "📄 Documents"
+                ],
+                "summary": "📋 Liste des documents",
+                "operationId": "getDocuments",
+                "parameters": [
+                    {
+                        "name": "dossier_id",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "valide",
+                        "in": "query",
+                        "schema": {
+                            "type": "boolean"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "✅ Liste des documents"
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "📄 Documents"
+                ],
+                "summary": "➕ Créer un document",
+                "operationId": "storeDocument",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "dossier_id",
+                                    "type_document_id",
+                                    "nom_fichier",
+                                    "chemin_fichier",
+                                    "type_mime",
+                                    "taille_fichier"
+                                ],
+                                "properties": {
+                                    "dossier_id": {
+                                        "type": "string",
+                                        "format": "uuid"
+                                    },
+                                    "type_document_id": {
+                                        "type": "string",
+                                        "format": "uuid"
+                                    },
+                                    "nom_fichier": {
+                                        "type": "string",
+                                        "example": "carte_identite.pdf"
+                                    },
+                                    "chemin_fichier": {
+                                        "type": "string",
+                                        "example": "/uploads/documents/carte_identite.pdf"
+                                    },
+                                    "type_mime": {
+                                        "type": "string",
+                                        "example": "application/pdf"
+                                    },
+                                    "taille_fichier": {
+                                        "type": "integer",
+                                        "example": 1024000
+                                    },
+                                    "valide": {
+                                        "type": "boolean",
+                                        "example": false
+                                    },
+                                    "commentaires": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "✅ Document créé"
+                    }
+                }
+            }
+        },
+        "/api/documents/{id}": {
+            "get": {
+                "tags": [
+                    "📄 Documents"
+                ],
+                "summary": "🔍 Détails d'un document",
+                "operationId": "getDocument",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "✅ Détails du document"
+                    }
+                }
+            },
+            "put": {
+                "tags": [
+                    "📄 Documents"
+                ],
+                "summary": "✏️ Mettre à jour un document",
+                "operationId": "updateDocument",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "valide": {
+                                        "type": "boolean"
+                                    },
+                                    "commentaires": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "✅ Document mis à jour"
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "📄 Documents"
+                ],
+                "summary": "🗑️ Supprimer un document",
+                "operationId": "deleteDocument",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "✅ Document supprimé"
+                    }
+                }
+            }
+        },
+        "/api/dossiers": {
+            "get": {
+                "tags": [
+                    "📁 Dossiers"
+                ],
+                "summary": "📋 Liste des dossiers",
+                "operationId": "getDossiers",
+                "parameters": [
+                    {
+                        "name": "candidat_id",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "auto_ecole_id",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "statut",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "en_attente",
+                                "en_cours",
+                                "valide",
+                                "rejete"
+                            ]
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "✅ Liste des dossiers"
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "📁 Dossiers"
+                ],
+                "summary": "➕ Créer un dossier",
+                "operationId": "storeDossier",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "candidat_id",
+                                    "auto_ecole_id",
+                                    "formation_id",
+                                    "date_creation"
+                                ],
+                                "properties": {
+                                    "candidat_id": {
+                                        "type": "string",
+                                        "format": "uuid"
+                                    },
+                                    "auto_ecole_id": {
+                                        "type": "string",
+                                        "format": "uuid"
+                                    },
+                                    "formation_id": {
+                                        "type": "string",
+                                        "format": "uuid"
+                                    },
+                                    "statut": {
+                                        "type": "string",
+                                        "enum": [
+                                            "en_attente",
+                                            "en_cours",
+                                            "valide",
+                                            "rejete"
+                                        ]
+                                    },
+                                    "date_creation": {
+                                        "type": "string",
+                                        "format": "date"
+                                    },
+                                    "commentaires": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "✅ Dossier créé"
+                    }
+                }
+            }
+        },
+        "/api/dossiers/{id}": {
+            "get": {
+                "tags": [
+                    "📁 Dossiers"
+                ],
+                "summary": "🔍 Détails d'un dossier",
+                "operationId": "getDossier",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "✅ Détails du dossier"
+                    }
+                }
+            },
+            "put": {
+                "tags": [
+                    "📁 Dossiers"
+                ],
+                "summary": "✏️ Mettre à jour un dossier",
+                "operationId": "updateDossier",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "statut": {
+                                        "type": "string"
+                                    },
+                                    "commentaires": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "✅ Dossier mis à jour"
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "📁 Dossiers"
+                ],
+                "summary": "🗑️ Supprimer un dossier",
+                "operationId": "deleteDossier",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "✅ Dossier supprimé"
+                    }
+                }
+            }
+        },
+        "/api/dossiers/{id}/upload-document": {
+            "post": {
+                "tags": [
+                    "📁 Dossiers"
+                ],
+                "summary": "📤 Uploader un document",
+                "description": "Upload un document et l'associe au dossier",
+                "operationId": "uploadDocument",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "required": [
+                                    "type_document_id",
+                                    "fichier"
+                                ],
+                                "properties": {
+                                    "type_document_id": {
+                                        "type": "string",
+                                        "format": "uuid"
+                                    },
+                                    "fichier": {
+                                        "type": "string",
+                                        "format": "binary"
+                                    },
+                                    "commentaires": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "✅ Document uploadé avec succès"
+                    },
+                    "403": {
+                        "description": "❌ Ce dossier ne vous appartient pas"
+                    },
+                    "404": {
+                        "description": "❌ Dossier non trouvé"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/dossiers/{id}/valider": {
+            "post": {
+                "tags": [
+                    "📁 Dossiers"
+                ],
+                "summary": "✅ Valider ou rejeter un dossier",
+                "description": "Permet à une auto-école de valider ou rejeter un dossier de candidature",
+                "operationId": "validerDossier",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "statut"
+                                ],
+                                "properties": {
+                                    "statut": {
+                                        "type": "string",
+                                        "enum": [
+                                            "valide",
+                                            "rejete"
+                                        ],
+                                        "example": "valide"
+                                    },
+                                    "commentaires": {
+                                        "type": "string",
+                                        "example": "Dossier complet et conforme"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "✅ Dossier validé/rejeté",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "dossier": {
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "❌ Non autorisé"
+                    },
+                    "404": {
+                        "description": "❌ Dossier non trouvé"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/documents/{id}/valider": {
+            "post": {
+                "tags": [
+                    "📄 Documents"
+                ],
+                "summary": "✅ Valider ou rejeter un document",
+                "description": "Permet à une auto-école de valider ou rejeter un document",
+                "operationId": "validerDocument",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "valide"
+                                ],
+                                "properties": {
+                                    "valide": {
+                                        "type": "boolean",
+                                        "example": true
+                                    },
+                                    "commentaires": {
+                                        "type": "string",
+                                        "example": "Document conforme"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "✅ Document validé/rejeté"
+                    },
+                    "403": {
+                        "description": "❌ Non autorisé"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/formations": {
+            "get": {
+                "tags": [
+                    "📚 Formations"
+                ],
+                "summary": "📋 Liste des formations",
+                "operationId": "getFormations",
+                "parameters": [
+                    {
+                        "name": "auto_ecole_id",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "statut",
+                        "in": "query",
+                        "schema": {
+                            "type": "boolean"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "✅ Liste des formations"
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "📚 Formations"
+                ],
+                "summary": "➕ Créer une formation",
+                "operationId": "storeFormation",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "auto_ecole_id",
+                                    "type_permis_id",
+                                    "montant",
+                                    "session_id"
+                                ],
+                                "properties": {
+                                    "auto_ecole_id": {
+                                        "type": "string",
+                                        "format": "uuid"
+                                    },
+                                    "type_permis_id": {
+                                        "type": "string",
+                                        "format": "uuid"
+                                    },
+                                    "montant": {
+                                        "type": "number",
+                                        "format": "float",
+                                        "example": 250000
+                                    },
+                                    "description": {
+                                        "type": "string"
+                                    },
+                                    "session_id": {
+                                        "type": "string",
+                                        "format": "uuid"
+                                    },
+                                    "statut": {
+                                        "type": "boolean",
+                                        "example": true
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "✅ Formation créée"
+                    },
+                    "422": {
+                        "description": "❌ Erreur de validation"
+                    }
+                }
+            }
+        },
+        "/api/formations/{id}": {
+            "get": {
+                "tags": [
+                    "📚 Formations"
+                ],
+                "summary": "🔍 Détails d'une formation",
+                "operationId": "getFormation",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "✅ Détails de la formation"
+                    },
+                    "404": {
+                        "description": "❌ Formation non trouvée"
+                    }
+                }
+            },
+            "put": {
+                "tags": [
+                    "📚 Formations"
+                ],
+                "summary": "✏️ Mettre à jour une formation",
+                "operationId": "updateFormation",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "montant": {
+                                        "type": "number"
+                                    },
+                                    "description": {
+                                        "type": "string"
+                                    },
+                                    "statut": {
+                                        "type": "boolean"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "✅ Formation mise à jour"
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "📚 Formations"
+                ],
+                "summary": "🗑️ Supprimer une formation",
+                "operationId": "deleteFormation",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "✅ Formation supprimée"
+                    }
+                }
+            }
+        },
+        "/api/formations/{id}/documents-requis": {
+            "get": {
+                "tags": [
+                    "📚 Formations"
+                ],
+                "summary": "📋 Documents requis pour une formation",
+                "description": "Liste tous les documents obligatoires pour s'inscrire à cette formation",
+                "operationId": "getDocumentsRequis",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "✅ Liste des documents requis",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "formation": {
+                                            "type": "object"
+                                        },
+                                        "documents_requis": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object"
+                                            }
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "❌ Formation non trouvée"
+                    }
+                }
+            }
+        },
+        "/api/referentiels": {
+            "get": {
+                "tags": [
+                    "📖 Référentiels"
+                ],
+                "summary": "📋 Liste des référentiels",
+                "operationId": "getReferentiels",
+                "parameters": [
+                    {
+                        "name": "type_ref",
+                        "in": "query",
+                        "description": "Type de référentiel",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "statut",
+                        "in": "query",
+                        "schema": {
+                            "type": "boolean"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "✅ Liste des référentiels"
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "📖 Référentiels"
+                ],
+                "summary": "➕ Créer un référentiel",
+                "operationId": "storeReferentiel",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "libelle",
+                                    "code",
+                                    "type_ref"
+                                ],
+                                "properties": {
+                                    "libelle": {
+                                        "type": "string",
+                                        "example": "Permis B"
+                                    },
+                                    "code": {
+                                        "type": "string",
+                                        "example": "PERMIS_B"
+                                    },
+                                    "type_ref": {
+                                        "type": "string",
+                                        "example": "type_permis"
+                                    },
+                                    "description": {
+                                        "type": "string"
+                                    },
+                                    "statut": {
+                                        "type": "boolean",
+                                        "example": true
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "✅ Référentiel créé"
+                    }
+                }
+            }
+        },
+        "/api/referentiels/{id}": {
+            "get": {
+                "tags": [
+                    "📖 Référentiels"
+                ],
+                "summary": "🔍 Détails d'un référentiel",
+                "operationId": "getReferentiel",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "✅ Détails du référentiel"
+                    }
+                }
+            },
+            "put": {
+                "tags": [
+                    "📖 Référentiels"
+                ],
+                "summary": "✏️ Mettre à jour un référentiel",
+                "operationId": "updateReferentiel",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "libelle": {
+                                        "type": "string"
+                                    },
+                                    "description": {
+                                        "type": "string"
+                                    },
+                                    "statut": {
+                                        "type": "boolean"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "✅ Référentiel mis à jour"
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "📖 Référentiels"
+                ],
+                "summary": "🗑️ Supprimer un référentiel",
+                "operationId": "deleteReferentiel",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "✅ Référentiel supprimé"
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "securitySchemes": {
+            "BearerAuth": {
+                "type": "http",
+                "description": "Token d'accès JWT obtenu via l'authentification",
+                "bearerFormat": "JWT",
+                "scheme": "bearer"
+            },
+            "bearer_token": {
+                "type": "http",
+                "description": "Token d'authentification JWT obtenu via /api/auth/login-direct",
+                "scheme": "bearer",
+                "bearerFormat": "JWT"
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "🔐 Authentification",
+            "description": "Endpoints d'authentification avec Authentik"
+        },
+        {
+            "name": "🔄 Tokens",
+            "description": "Gestion des tokens d'accès et de rafraîchissement"
+        },
+        {
+            "name": "🏫 Auto-Écoles",
+            "description": "Gestion des auto-écoles"
+        },
+        {
+            "name": "👨‍🎓 Candidats",
+            "description": "Gestion des candidats au permis de conduire"
+        },
+        {
+            "name": "📄 Documents",
+            "description": "Gestion des documents des dossiers"
+        },
+        {
+            "name": "📁 Dossiers",
+            "description": "Gestion des dossiers de formation"
+        },
+        {
+            "name": "📚 Formations",
+            "description": "Gestion des formations auto-école"
+        },
+        {
+            "name": "📖 Référentiels",
+            "description": "Gestion des données de référence (types de permis, sessions, etc.)"
+        }
+    ]
+}

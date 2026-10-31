@@ -1,0 +1,11 @@
+export { default as TypeDemandePage } from './TypeDemandePage';
+export { default as AutoEcoleFormationPage } from './AutoEcoleFormationPage';
+export { default as NumeroPermisPage } from './NumeroPermisPage';
+export { default as PermisInfoPage } from './PermisInfoPage';
+export { default as PermisOriginePage } from './PermisOriginePage';
+export { default as PermisBOriginePage } from './PermisBOriginePage';
+export { default as PersonneFormPage } from './PersonneFormPage';
+export { default as CandidatFormPage } from './CandidatFormPage';
+export { default as CandidatRecapPage } from './CandidatRecapPage';
+export { default as FinalisationPage } from './FinalisationPage';
+

@@ -1,0 +1,40 @@
+@startuml
+!theme blueprint
+
+' Définition des acteurs (pools / swimlanes)
+|Candidat|
+start
+:Création du compte;
+:Authentification au dashboard candidat;
+:Inscription à l’auto-école;
+:Complétion du dossier;
+|Auto-école|
+:Vérification des pièces;
+if (Dossier complet ?) then (Oui)
+  :Validation par l’auto-école;
+  :Transmission au CNEPC;
+else (Non)
+  :Retour au candidat pour correction;
+  detach
+endif
+
+|Candidat|
+: Paiement en ligne;
+
+|CNEPC|
+:Réception du dossier candidat;
+:Évaluation du candidat (théorique + pratique);
+if (Candidat admis ?) then (Oui)
+  :Validation des résultats;
+  :Transmission du dossier au CNEDT;
+else (Non)
+  :Notification d’échec au candidat;
+  stop
+endif
+
+|CNEDT (Système externe)|
+:Enrôlement du candidat;
+:Impression du permis de conduire;
+
+stop
+@enduml
