@@ -626,68 +626,37 @@ const CreateDossierForm: React.FC<CreateDossierFormProps> = ({ onSuccess }) => {
     return result;
   };
 
-  // Calculer l'index réel de l'étape selon la logique :
-  // Pour nouveau permis type C : Type demande -> Auto-école/Formation -> Permis B d'origine -> Récapitulatif/PersonneFormStep -> CandidatFormStep -> Finalisation
-  // Pour nouveau permis non-C : Type demande -> Auto-école/Formation -> PersonneFormStep -> CandidatFormStep -> Finalisation
-  // Pour autres types avec permis d'origine : Type demande -> Numéro permis -> Informations permis -> Permis d'origine -> PersonneFormStep -> CandidatFormStep -> Finalisation
-  // Pour autres types sans permis d'origine : Type demande -> Numéro permis -> Informations permis -> PersonneFormStep -> CandidatFormStep -> Finalisation
+  // Convertir l'index interne (utilisé par les différents parcours) en index du Stepper.
+  // Les parcours conservent leurs index internes afin de ne pas modifier les formulaires.
   const getRealStepIndex = (step: number): number => {
-    if (step === 0) return 0; // Étape 1 : Type de demande
-    
-    const hasExistingCandidat = candidatMode === 'existing' && selectedCandidat && candidatId;
-    const hasPermisOrigine = needsPermisOrigine();
-    
+    const hasExistingCandidat = candidatMode === 'existing' && !!selectedCandidat && !!candidatId;
+    if (hasExistingCandidat && step >= 3) return steps.length - 1;
+
     if (isNouveauPermis) {
-      // Pour nouveau permis : Type demande -> Auto-école/Formation -> [Permis B d'origine si type C] -> [Récapitulatif OU PersonneFormStep] -> CandidatFormStep -> Finalisation
-      const hasPermisBOrigine = isFormationTypeC();
-      if (step === 1) return 1; // Auto-école/Formation
-      if (hasPermisBOrigine) {
-        if (step === 2) return 2; // Permis B d'origine
-        if (step === 3) return 3; // Récapitulatif
-      if (hasExistingCandidat) {
-        return 6; // Finalisation (sauter Personne et Candidat)
-      } else {
-          if (step === 4) return 4; // Informations personnelles
-          if (step === 5) return 5; // Informations candidat
-          if (step === 6) return 6; // Finalisation
+      if (isFormationTypeC()) {
+        if (step <= 2) return step;
+        if (step === 3 || step === 4) return 3;
+        if (step === 5) return 4;
+        return 5;
       }
-    } else {
-        if (hasExistingCandidat) {
-          return 6; // Finalisation (sauter Personne et Candidat)
-        } else {
-          if (step === 2) return 2; // (pas utilisé, on passe directement à 4)
-          if (step === 4) return 4; // Informations personnelles
-          if (step === 5) return 5; // Informations candidat
-          if (step === 6) return 6; // Finalisation
-        }
-      }
-    } else {
-      // Pour autres types : Type demande -> Numéro permis -> Informations permis -> [Permis origine] -> Personne -> Candidat -> Finalisation
-      if (step === 1) return 1; // Numéro de permis
-      if (step === 2) return 2; // Informations du permis
-      
-      let currentRealStep = 3;
-      
-      // Si permis d'origine requis, c'est l'étape 3
-      if (hasPermisOrigine) {
-        if (step === 3) return 3; // Permis d'origine
-        currentRealStep = 4;
-      }
-      
-      if (hasExistingCandidat) {
-        // Sauter Personne et Candidat, aller directement à Finalisation
-        return 6; // Finalisation
-      } else {
-        // Informations personnelles - étape 4
-        if (step === 4) return 4; // Informations personnelles
-        // Informations candidat - étape 5
-        if (step === 5) return 5; // Informations candidat
-        // Finalisation - étape 6
-        if (step === 6) return 6; // Finalisation
-      }
+      if (step === 0) return 0;
+      if (step === 1) return 1;
+      if (step === 4) return 2;
+      if (step === 5) return 3;
+      return 4;
     }
-    
-    return step;
+
+    if (needsPermisOrigine()) {
+      if (step <= 3) return step;
+      if (step === 4) return 4;
+      if (step === 6) return 5;
+      return 6;
+    }
+
+    if (step <= 2) return step;
+    if (step === 3) return 3;
+    if (step === 5) return 4;
+    return 5;
   };
 
   // Fonction pour enregistrer les informations personnelles via auth/register
@@ -1405,7 +1374,9 @@ const CreateDossierForm: React.FC<CreateDossierFormProps> = ({ onSuccess }) => {
       if (!validateStepAutoEcole({ isNouveauPermis, autoEcoleId, formationId: formationData.formation_id, setError })) return;
       // Si la formation est de type C, passer à l'étape permis B d'origine, sinon passer au choix candidat
       const hasPermisBOrigine = isFormationTypeC();
-      setActiveStep(hasPermisBOrigine ? 2 : 3);
+      // Permis C : étape 2 (permis B d'origine).
+      // Autres permis : étape 4 (informations personnelles).
+      setActiveStep(hasPermisBOrigine ? 2 : 4);
     } else if (activeStep === 2 && isNouveauPermis && isFormationTypeC()) {
       // Étape permis B d'origine (si nouveau permis de type C)
       const numPermisBOrigineComplet = buildNumeroOriginePermis(numeroBOriginePermisParts, permisBOrigineFormat);
@@ -1477,7 +1448,7 @@ const CreateDossierForm: React.FC<CreateDossierFormProps> = ({ onSuccess }) => {
       
       // Si catégorie C/D/E, passer à l'étape permis d'origine, sinon passer directement à PersonneFormStep
       const hasPermisOrigine = needsPermisOrigine();
-      setActiveStep(hasPermisOrigine ? 3 : 3);
+      setActiveStep(3);
     } else if (activeStep === 3 && !isNouveauPermis && needsPermisOrigine()) {
       // Étape permis d'origine (si catégorie C/D/E) — champs en lecture seule, pas de bouton Vérifier
       const numPermisOrigineComplet = buildNumeroOriginePermis(numeroOriginePermisParts, permisOrigineFormat);
@@ -1605,10 +1576,28 @@ const CreateDossierForm: React.FC<CreateDossierFormProps> = ({ onSuccess }) => {
     }
   };
 
-  // Revenir à l'étape précédente
+  // Revenir à l'étape précédente sans tomber sur un index interne inutilisé.
   const handleBack = () => {
     setError(null);
-    setActiveStep((prevStep) => prevStep - 1);
+    const hasExistingCandidat = candidatMode === 'existing' && !!selectedCandidat && !!candidatId;
+    if (hasExistingCandidat && activeStep >= 5) {
+      return setActiveStep(isNouveauPermis ? (isFormationTypeC() ? 3 : 1) : (needsPermisOrigine() ? 4 : 3));
+    }
+    if (isNouveauPermis) {
+      if (!isFormationTypeC() && activeStep === 4) return setActiveStep(1);
+      if (activeStep === 6) return setActiveStep(5);
+      if (activeStep === 5) return setActiveStep(isFormationTypeC() ? 3 : 4);
+      return setActiveStep((prev) => Math.max(0, prev - 1));
+    }
+    if (needsPermisOrigine()) {
+      if (activeStep === 7) return setActiveStep(6);
+      if (activeStep === 6) return setActiveStep(4);
+      if (activeStep === 4) return setActiveStep(3);
+      return setActiveStep((prev) => Math.max(0, prev - 1));
+    }
+    if (activeStep === 6) return setActiveStep(5);
+    if (activeStep === 5) return setActiveStep(3);
+    return setActiveStep((prev) => Math.max(0, prev - 1));
   };
 
   const selectedReferentielForReadiness = useMemo(() => {
@@ -1957,6 +1946,8 @@ const CreateDossierForm: React.FC<CreateDossierFormProps> = ({ onSuccess }) => {
           selectedTypeDemande={selectedTypeDemande}
           isNouveauPermis={isNouveauPermis}
           onTypeDemandeChange={setTypeDemandeId}
+          onBack={handleBack}
+          onNextClick={handleNext}
         />
       );
     }
@@ -2174,9 +2165,10 @@ const CreateDossierForm: React.FC<CreateDossierFormProps> = ({ onSuccess }) => {
       // Pour autres types de permis
       // Étape 1 : Numéro de permis
       if (step === 1) {
-        // Afficher la vérification uniquement pour Duplicata et Fiche d'enregistrement
-        const shouldShowVerification = isFicheEnregistre || selectedTypeDemande?.name === 'DUPLICATA';
-        
+        // Afficher la vérification uniquement pour Duplicata et Fiche d'enregistrement.
+        const shouldShowVerification =
+          isFicheEnregistre || selectedTypeDemande?.name === 'DUPLICATA';
+
         return (
           <NumeroPermisStep
             numeroPermisParts={numeroPermisParts}
@@ -2185,36 +2177,48 @@ const CreateDossierForm: React.FC<CreateDossierFormProps> = ({ onSuccess }) => {
             format={permisFormat}
             personneData={personneData}
             candidatData={candidatData}
-            referentiels={referentiels}
-            loadingReferentiels={loadingReferentiels}
-            referencielId={formationData.referenciel_id}
             onNumeroPermisPartsChange={setNumeroPermisParts}
             onFormatChange={setPermisFormat}
             onIdentityDataChange={(identity) => {
-              setPersonneData(prev => ({
+              setPersonneData((prev) => ({
                 ...prev,
                 nom: identity.nom || prev.nom,
                 prenom: identity.prenom || prev.prenom,
               }));
-              setCandidatData(prev => ({
+
+              setCandidatData((prev) => ({
                 ...prev,
                 date_naissance: identity.dateNaissance || prev.date_naissance,
                 lieu_naissance: identity.lieuNaissance || prev.lieu_naissance,
                 numero_piece: identity.numeroIdentite || prev.numero_piece,
               }));
             }}
-            onReferencielChange={handleReferencielChange}
-            verifyingPermis={shouldShowVerification ? verifyingPermisPrincipal : undefined}
-            permisVerified={shouldShowVerification ? permisPrincipalVerified : undefined}
-            verificationError={shouldShowVerification ? verificationErrorPrincipal : undefined}
-            onVerifyPermis={shouldShowVerification ? handleVerifyPermisPrincipal : undefined}
-            permisListForSelection={shouldShowVerification ? permisListForModal : null}
+            verifyingPermis={
+              shouldShowVerification ? verifyingPermisPrincipal : undefined
+            }
+            permisVerified={
+              shouldShowVerification ? permisPrincipalVerified : undefined
+            }
+            verificationError={
+              shouldShowVerification ? verificationErrorPrincipal : undefined
+            }
+            onVerifyPermis={
+              shouldShowVerification ? handleVerifyPermisPrincipal : undefined
+            }
+            permisListForSelection={
+              shouldShowVerification ? permisListForModal : null
+            }
             numPermisRecherche={buildNumeroPermis(numeroPermisParts, permisFormat)}
-            onPermisSelectionConfirm={shouldShowVerification ? handlePermisSelectionConfirm : undefined}
-            onPermisSelectionClose={shouldShowVerification ? handlePermisSelectionClose : undefined}
+            onPermisSelectionConfirm={
+              shouldShowVerification ? handlePermisSelectionConfirm : undefined
+            }
+            onPermisSelectionClose={
+              shouldShowVerification ? handlePermisSelectionClose : undefined
+            }
           />
         );
       }
+
       // Étape 2 : Informations du permis
       if (step === 2) {
         return (
@@ -2502,7 +2506,7 @@ const CreateDossierForm: React.FC<CreateDossierFormProps> = ({ onSuccess }) => {
     !!(personneData.prenom || '').trim() &&
     !!(candidatData.date_naissance || '').trim() &&
     !!(candidatData.lieu_naissance || '').trim() &&
-    !!((candidatData.numero_piece || candidatData.numero_identite || '').trim());
+    !!(candidatData.numero_piece || '').trim();
 
   const shouldBlockNextOnNumeroPermisIdentity =
     !isNouveauPermis &&
@@ -2539,7 +2543,7 @@ const CreateDossierForm: React.FC<CreateDossierFormProps> = ({ onSuccess }) => {
           </Box>
 
           {/* Stepper */}
-          <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
+          <Stepper activeStep={Math.min(getRealStepIndex(activeStep), steps.length - 1)} sx={{ mb: 4 }}>
             {steps.map((label) => (
               <Step key={label}>
                 <StepLabel>{label}</StepLabel>
@@ -2589,17 +2593,14 @@ const CreateDossierForm: React.FC<CreateDossierFormProps> = ({ onSuccess }) => {
             </Box>
 
             <Box sx={{ display: 'flex', gap: 2 }}>
-              {activeStep < steps.length - 1 && !isPersonneFormStep(activeStep) && !isCandidatRecapStep(activeStep) && !isCandidatFormStep(activeStep) && (
+              {getRealStepIndex(activeStep) < steps.length - 1 && !isPersonneFormStep(activeStep) && !isCandidatRecapStep(activeStep) && !isCandidatFormStep(activeStep) && (
                 <Button
                   onClick={handleNext}
                   variant="contained"
                   disabled={loading || verifyingPermis || verifyingPermisPrincipal || verifyingPermisOrigine || shouldBlockNextOnNumeroPermisIdentity}
                   endIcon={(loading || verifyingPermis || verifyingPermisPrincipal || verifyingPermisOrigine) ? <CircularProgress size={20} /> : <ArrowForward />}
                 >
-                  {verifyingPermis ? 'Vérification du permis B...' : verifyingPermisPrincipal ? 'Vérification du permis...' : verifyingPermisOrigine ? 'Vérification du permis d\'origine...' : loading 
-                    ? (getRealStepIndex(activeStep) === (isNouveauPermis ? 2 : 1) ? 'Enregistrement...' : getRealStepIndex(activeStep) === (isNouveauPermis ? 3 : 2) ? 'Création du candidat...' : 'Suivant')
-                    : (activeStep === 0 ? 'Suivant' : getRealStepIndex(activeStep) === (isNouveauPermis ? 2 : 1) ? 'Créer le compte' : getRealStepIndex(activeStep) === (isNouveauPermis ? 3 : 2) ? 'Créer le candidat' : 'Suivant')
-                  }
+                  {verifyingPermis ? 'Vérification du permis B...' : verifyingPermisPrincipal ? 'Vérification du permis...' : verifyingPermisOrigine ? 'Vérification du permis d\'origine...' : loading ? 'Traitement...' : 'Suivant'}
                 </Button>
               )}
             </Box>

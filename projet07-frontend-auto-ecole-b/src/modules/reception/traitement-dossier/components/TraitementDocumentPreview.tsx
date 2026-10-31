@@ -8,7 +8,7 @@ function isImageMime(m: string) {
 }
 
 function isPdfMime(m: string) {
-  return /\/pdf$/i.test(m || '') || /^application\/pdf$/i.test(m || '');
+  return /^application\/pdf$/i.test(m || '');
 }
 
 export interface TraitementDocumentPreviewProps {
@@ -38,18 +38,27 @@ export const TraitementDocumentPreview: React.FC<TraitementDocumentPreviewProps>
 
       try {
         const result = await fetchDocumentAsBlob(doc);
+
         if (cancelled) return;
+
         if (!result) {
           setFailed(true);
           setLoading(false);
           return;
         }
+
         objectUrl = URL.createObjectURL(result.blob);
+
         if (cancelled) {
           URL.revokeObjectURL(objectUrl);
           return;
         }
-        setPreview({ url: objectUrl, mime: result.contentType });
+
+        setPreview({
+          url: objectUrl,
+          mime: result.contentType,
+        });
+
         setLoading(false);
       } catch {
         if (!cancelled) {
@@ -61,12 +70,25 @@ export const TraitementDocumentPreview: React.FC<TraitementDocumentPreviewProps>
 
     return () => {
       cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
     };
   }, [doc?.id]);
 
   if (loading) {
-    return <Skeleton variant="rounded" height={maxHeight} sx={{ borderRadius: 1, width: '100%', flexShrink: 0 }} />;
+    return (
+      <Skeleton
+        variant="rounded"
+        height={maxHeight}
+        sx={{
+          borderRadius: 1,
+          width: '100%',
+          flexShrink: 0,
+        }}
+      />
+    );
   }
 
   if (failed || !preview) {
@@ -79,22 +101,35 @@ export const TraitementDocumentPreview: React.FC<TraitementDocumentPreviewProps>
           borderRadius: 1,
           border: '1px dashed',
           borderColor: 'divider',
-          display: 'flex',
-          flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
           gap: 1,
           py: 2,
           px: 2,
-          bgcolor: (t) => (t.palette.mode === 'dark' ? 'grey.900' : 'grey.50'),
+          bgcolor: (t) =>
+            t.palette.mode === 'dark' ? 'grey.900' : 'grey.50',
         }}
       >
-        <DocumentMagnifyingGlassIcon className="w-10 h-10" style={{ opacity: 0.45 }} />
-        <Typography variant="caption" color="text.secondary" textAlign="center">
+        <DocumentMagnifyingGlassIcon
+          className="w-10 h-10"
+          style={{ opacity: 0.45 }}
+        />
+
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          textAlign="center"
+        >
           Aperçu indisponible (document local ou en cours de synchronisation).
         </Typography>
+
         {doc?.id && !String(doc.id).startsWith('sim_') && (
-          <Button size="small" variant="outlined" onClick={() => handleViewDocument(doc)} sx={{ textTransform: 'none' }}>
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={() => handleViewDocument(doc)}
+            sx={{ textTransform: 'none' }}
+          >
             Ouvrir le fichier
           </Button>
         )}
@@ -113,7 +148,8 @@ export const TraitementDocumentPreview: React.FC<TraitementDocumentPreviewProps>
           flexShrink: 0,
           borderRadius: 1,
           overflow: 'hidden',
-          bgcolor: (t) => (t.palette.mode === 'dark' ? 'grey.900' : 'grey.100'),
+          bgcolor: (t) =>
+            t.palette.mode === 'dark' ? 'grey.900' : 'grey.100',
           alignItems: 'center',
           justifyContent: 'center',
           border: '1px solid',
@@ -123,7 +159,12 @@ export const TraitementDocumentPreview: React.FC<TraitementDocumentPreviewProps>
         <img
           src={preview.url}
           alt={doc?.nom_fichier || doc?.nom || 'Aperçu'}
-          style={{ maxWidth: '100%', maxHeight, objectFit: 'contain', display: 'block' }}
+          style={{
+            maxWidth: '100%',
+            maxHeight,
+            objectFit: 'contain',
+            display: 'block',
+          }}
         />
       </Box>
     );
@@ -150,7 +191,10 @@ export const TraitementDocumentPreview: React.FC<TraitementDocumentPreviewProps>
           src={`${preview.url}#toolbar=0&navpanes=0`}
           width="100%"
           height="100%"
-          style={{ border: 'none', display: 'block' }}
+          style={{
+            border: 'none',
+            display: 'block',
+          }}
         />
       </Box>
     );
@@ -172,7 +216,11 @@ export const TraitementDocumentPreview: React.FC<TraitementDocumentPreviewProps>
         p: 2,
       }}
     >
-      <Button variant="outlined" onClick={() => handleViewDocument(doc)} sx={{ textTransform: 'none' }}>
+      <Button
+        variant="outlined"
+        onClick={() => handleViewDocument(doc)}
+        sx={{ textTransform: 'none' }}
+      >
         Ouvrir le fichier ({preview.mime || 'type inconnu'})
       </Button>
     </Box>

@@ -35,19 +35,29 @@ class HPermisController extends Controller
     #[QueryParameter('numero_permis', description: 'Numéro de permis (recherche partielle)', type: 'string', required: false)]
     #[ScrambleResponse(200, 'Tableau d\'enregistrements HPermis (liste vide si aucun résultat). Chaque élément : id, numero_identite, nom, prenom, sexe, nationalite, date_naissance, lieu_naissance, numero_permis, type_permis, categorie, date_obtention, lieu_obtention, date_validite, etc.')]
     public function index(Request $request, ?string $nomNumeroPermis = null)
-    {
-        // GET : query params ou path param ; POST : body (nom, prenom, date_naissance, numero_permis, nomNumeroPermis)
-        $criteria = [
-            'nomNumeroPermis' => $nomNumeroPermis ?? $request->input('nomNumeroPermis'),
-            'nom' => $request->input('nom'),
-            'prenom' => $request->input('prenom'),
-            'date_naissance' => $request->input('date_naissance'),
-            'numero_permis' => $request->input('numero_permis'),
-        ];
-        $resultats = $this->permisService->search($criteria);
+{
+    // Recherche par numéro dans le registre secondaire
+    if ($nomNumeroPermis !== null && trim($nomNumeroPermis) !== '') {
+        $resultatsRegistre = $this->permisService->searchRegistre($nomNumeroPermis);
 
-        return response()->json($resultats, 200);
+        if (!empty($resultatsRegistre)) {
+            return response()->json($resultatsRegistre, 200);
+        }
     }
+
+    // Conservation de la recherche historique h_permis
+    $criteria = [
+        'nomNumeroPermis' => $nomNumeroPermis ?? $request->input('nomNumeroPermis'),
+        'nom' => $request->input('nom'),
+        'prenom' => $request->input('prenom'),
+        'date_naissance' => $request->input('date_naissance'),
+        'numero_permis' => $request->input('numero_permis'),
+    ];
+
+    $resultats = $this->permisService->search($criteria);
+
+    return response()->json($resultats, 200);
+}
 
     /**
      * Recherche souple paginée sur h_permis.

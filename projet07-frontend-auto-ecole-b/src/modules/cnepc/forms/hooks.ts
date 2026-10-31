@@ -238,6 +238,7 @@ export const useAgentLieuExamen = (): {
     const run = async () => {
       try {
         const centre = (await referentielService.getReferentielById(centreId)) as ReferentielExt;
+        console.log('CENTRE COMPLET RETOURNÉ PAR API :', centre);
         if (cancelled) return;
         const provinceId = String(centre.parent_id ?? centre.parent?.id ?? '').trim();
         setLieu({ province_id: provinceId, centre_id: centreId });

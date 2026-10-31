@@ -324,8 +324,13 @@ export class AutoEcoleService {
       const response = await axiosClient.get(`/auto-ecoles?${params}`, config);
       const rows = AutoEcoleService.mapPayloadToAutoEcoleSelectRows(response.data);
       rows.forEach((row) => collected.set(row.id, row));
-      const meta = AutoEcoleService.asRecord(response.data)?.meta;
-      lastPage = Math.max(1, Number(meta?.last_page ?? page));
+     const responseData = AutoEcoleService.asRecord(response.data);
+const meta = AutoEcoleService.asRecord(responseData?.meta);
+
+lastPage = Math.max(
+  1,
+  Number(meta?.['last_page'] ?? page)
+);
       if (!rows.length) break;
       page += 1;
     }
@@ -336,6 +341,7 @@ export class AutoEcoleService {
   private static normalizeFormation(input: unknown, autoEcoleIdFallback = ''): Formation | null {
     const src = AutoEcoleService.asRecord(input);
     if (!src) return null;
+
     const attrs = AutoEcoleService.asRecord(src.attributes);
     const id = AutoEcoleService.toStr(src.id ?? attrs?.id);
     if (!id) return null;
@@ -343,9 +349,20 @@ export class AutoEcoleService {
     const typePermisSrc = AutoEcoleService.asRecord(
       src.type_permis ?? attrs?.type_permis ?? src.typePermis
     );
+
+    // Récupération de la session liée à la formation.
+    const sessionSrc = AutoEcoleService.asRecord(
+      src.session ?? attrs?.session
+    );
+
+    const session_id = AutoEcoleService.toStr(
+      src.session_id ?? attrs?.session_id ?? sessionSrc?.id
+    );
+
     const type_permis_id = AutoEcoleService.toStr(
       src.type_permis_id ?? attrs?.type_permis_id ?? typePermisSrc?.id
     );
+
     const montantRaw = src.montant ?? attrs?.montant;
     const montant =
       typeof montantRaw === 'number'
@@ -353,6 +370,7 @@ export class AutoEcoleService {
         : montantRaw != null && montantRaw !== ''
           ? Number(montantRaw)
           : undefined;
+
     const now = new Date().toISOString();
 
     return {
@@ -361,6 +379,17 @@ export class AutoEcoleService {
         src.auto_ecole_id ?? attrs?.auto_ecole_id ?? autoEcoleIdFallback
       ),
       type_permis_id,
+
+      // Ces deux propriétés permettent au formulaire d'accéder à la session.
+      session_id,
+      session: sessionSrc
+        ? {
+            id: AutoEcoleService.toStr(sessionSrc.id),
+            libelle: AutoEcoleService.toStr(sessionSrc.libelle),
+            code: AutoEcoleService.toStr(sessionSrc.code),
+          }
+        : undefined,
+
       montant: Number.isFinite(montant) ? montant : undefined,
       montant_formate:
         AutoEcoleService.toStr(src.montant_formate ?? attrs?.montant_formate) || undefined,
@@ -385,7 +414,7 @@ export class AutoEcoleService {
         : undefined,
       created_at: AutoEcoleService.toStr(src.created_at ?? attrs?.created_at, now),
       updated_at: AutoEcoleService.toStr(src.updated_at ?? attrs?.updated_at, now),
-    };
+    } as Formation;
   }
 
   private static extractCnepcBundleFromPayload(payload: unknown): {
@@ -457,6 +486,7 @@ export class AutoEcoleService {
     const config = AutoEcoleService.getRequestConfig(requestConfig);
     try {
       const response = await axiosClient.get('/auto-ecoles/cnepc', config);
+      console.log('RÉPONSE API CNEPC :', response.data);
       let bundle = AutoEcoleService.extractCnepcBundleFromPayload(response.data);
       if (!bundle) return null;
 
@@ -1129,6 +1159,7 @@ export class AutoEcoleService {
   async getFormationsByAutoEcole(autoEcoleId: string): Promise<Formation[]> {
     try {
       const response = await axiosClient.get(`/formations?auto_ecole_id=${autoEcoleId}`);
+      console.log('RÉPONSE API FORMATIONS :', response.data);
       // La réponse peut être soit { data: [...] } soit directement un array
       return Array.isArray(response.data) ? response.data : (response.data.data || []);
     } catch (error) {

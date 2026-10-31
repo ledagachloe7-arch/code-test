@@ -416,7 +416,7 @@ export interface FormationDetail {
   montant: number;
   montant_formate: string;
   description: string;
-  session_id: string;
+  session_id?: string;
   statut: boolean;
   statut_libelle: string;
   auto_ecole: any;
@@ -431,17 +431,7 @@ export interface FormationDetail {
     created_at: string;
     updated_at: string;
   };
-  session: {
-    id: string;
-    libelle: string;
-    code: string;
-    type_ref: string;
-    description: string;
-    statut: boolean;
-    statut_libelle: string;
-    created_at: string;
-    updated_at: string;
-  };
+  session?: Referentiel;
   dossiers: DossierDetail[];
   created_at: string;
   updated_at: string;

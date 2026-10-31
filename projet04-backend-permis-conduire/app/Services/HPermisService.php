@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\HPermis;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 class HPermisService
 {
     public function createPermis(array $data)
@@ -112,6 +113,52 @@ class HPermisService
 
         return $q->get();
     }
+
+    /**
+ * Recherche exacte dans le registre secondaire des permis.
+ * Ne modifie pas les données du registre.
+ */
+public function searchRegistre(string $numero): array
+{
+    $numero = strtoupper(trim(str_replace('-', '', $numero)));
+
+    if ($numero === '') {
+        return [];
+    }
+
+    $permis = DB::connection('registre')
+        ->table('registre_permis')
+        ->where(function ($query) use ($numero) {
+            $query->whereRaw('UPPER(REPLACE(numero_permis, ?, ?)) = ?', ['-', '', $numero])
+                  ->orWhereRaw('UPPER(REPLACE(numero_origine, ?, ?)) = ?', ['-', '', $numero]);
+        })
+        ->first();
+
+    if (!$permis) {
+        return [];
+    }
+
+    return [[
+        'numero_identite' => $permis->numero_id,
+        'numero_permis' => $permis->numero_permis,
+        'nom' => $permis->nom,
+        'prenom' => $permis->prenom,
+        'date_naissance' => $permis->date_naissance,
+        'lieu_naissance' => $permis->lieu_naissance,
+        'nationalite' => $permis->nationalite,
+        'sexe' => null,
+        'categorie' => $permis->categorie,
+        'type_permis' => $permis->type_permis,
+        'date_obtention' => $permis->date_obtention,
+        'lieu_obtention' => $permis->lieu_obtention,
+        'date_validite' => $permis->date_validite,
+        'numero_origine_permis' => $permis->numero_origine,
+        'lieu_origine' => $permis->lieu_origine,
+        'date_renou1' => $permis->date_renouvellement_1,
+        'date_renou2' => $permis->date_renouvellement_2,
+        'date_renou3' => $permis->date_renouvellement_3,
+    ]];
+}
 
     private function normalizeString($value): string
     {

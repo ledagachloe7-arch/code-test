@@ -6,27 +6,16 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Default Database Connection Name
+    | Default Database Connection
     |--------------------------------------------------------------------------
-    |
-    | Here you may specify which of the database connections below you wish
-    | to use as your default connection for database operations. This is
-    | the connection which will be utilized unless another connection
-    | is explicitly specified when you execute a query / statement.
-    |
     */
 
-    'default' => env('DB_CONNECTION', 'sqlite'),
+    'default' => env('DB_CONNECTION', 'pgsql'),
 
     /*
     |--------------------------------------------------------------------------
     | Database Connections
     |--------------------------------------------------------------------------
-    |
-    | Below are all of the database connections defined for your application.
-    | An example configuration is provided for each database system which
-    | is supported by Laravel. You're free to add / remove connections.
-    |
     */
 
     'connections' => [
@@ -63,7 +52,6 @@ return [
             ]) : [],
         ],
 
-        
         'mariadb' => [
             'driver' => 'mariadb',
             'url' => env('DB_URL'),
@@ -84,35 +72,47 @@ return [
             ]) : [],
         ],
 
+        /*
+        |--------------------------------------------------------------------------
+        | Connexion principale : Supabase
+        |--------------------------------------------------------------------------
+        */
+
         'pgsql' => [
             'driver' => 'pgsql',
             'url' => env('DB_URL'),
             'host' => env('DB_HOST', '127.0.0.1'),
-            'port' => env('DB_PORT', '5433'),
-            'database' => env('DB_DATABASE', 'permis'),
+            'port' => env('DB_PORT', '5432'),
+            'database' => env('DB_DATABASE', 'postgres'),
             'username' => env('DB_USERNAME', 'postgres'),
-            'password' => env('DB_PASSWORD', 'teste'),
+            'password' => env('DB_PASSWORD', ''),
             'charset' => env('DB_CHARSET', 'utf8'),
             'prefix' => '',
             'prefix_indexes' => true,
             'search_path' => 'public',
-            'sslmode' => 'prefer',
+            'sslmode' => env('DB_SSLMODE', 'require'),
         ],
 
+        /*
+        |--------------------------------------------------------------------------
+        | Connexion secondaire : Registre des permis
+        |--------------------------------------------------------------------------
+        */
+
         'registre' => [
-    'driver' => 'pgsql',
-    'url' => env('REGISTRE_DB_URL'),
-    'host' => env('REGISTRE_DB_HOST', '127.0.0.1'),
-    'port' => env('REGISTRE_DB_PORT', '5432'),
-    'database' => env('REGISTRE_DB_DATABASE', 'registre_permis_test'),
-    'username' => env('REGISTRE_DB_USERNAME', 'postgres'),
-    'password' => env('REGISTRE_DB_PASSWORD', ''),
-    'charset' => 'utf8',
-    'prefix' => '',
-    'prefix_indexes' => true,
-    'search_path' => 'public',
-    'sslmode' => 'prefer',
-],
+            'driver' => 'pgsql',
+            'url' => env('REGISTRE_DB_URL'),
+            'host' => env('REGISTRE_DB_HOST', '127.0.0.1'),
+            'port' => env('REGISTRE_DB_PORT', '5432'),
+            'database' => env('REGISTRE_DB_DATABASE', 'registre_permis_test'),
+            'username' => env('REGISTRE_DB_USERNAME', 'postgres'),
+            'password' => env('REGISTRE_DB_PASSWORD', ''),
+            'charset' => 'utf8',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'public',
+            'sslmode' => env('REGISTRE_DB_SSLMODE', 'prefer'),
+        ],
 
         'sqlsrv' => [
             'driver' => 'sqlsrv',
@@ -125,8 +125,6 @@ return [
             'charset' => env('DB_CHARSET', 'utf8'),
             'prefix' => '',
             'prefix_indexes' => true,
-            // 'encrypt' => env('DB_ENCRYPT', 'yes'),
-            // 'trust_server_certificate' => env('DB_TRUST_SERVER_CERTIFICATE', 'false'),
         ],
 
     ],
@@ -135,11 +133,6 @@ return [
     |--------------------------------------------------------------------------
     | Migration Repository Table
     |--------------------------------------------------------------------------
-    |
-    | This table keeps track of all the migrations that have already run for
-    | your application. Using this information, we can determine which of
-    | the migrations on disk haven't actually been run on the database.
-    |
     */
 
     'migrations' => [
@@ -149,13 +142,8 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Redis Databases
+    | Redis
     |--------------------------------------------------------------------------
-    |
-    | Redis is an open source, fast, and advanced key-value store that also
-    | provides a richer body of commands than a typical key-value system
-    | such as Memcached. You may define your connection settings here.
-    |
     */
 
     'redis' => [
@@ -164,7 +152,10 @@ return [
 
         'options' => [
             'cluster' => env('REDIS_CLUSTER', 'redis'),
-            'prefix' => env('REDIS_PREFIX', Str::slug((string) env('APP_NAME', 'laravel')).'-database-'),
+            'prefix' => env(
+                'REDIS_PREFIX',
+                Str::slug((string) env('APP_NAME', 'laravel')) . '-database-'
+            ),
             'persistent' => env('REDIS_PERSISTENT', false),
         ],
 

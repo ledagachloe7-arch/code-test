@@ -22,7 +22,9 @@ import {
   Download as DownloadIcon,
   Delete as DeleteIcon
 } from '@mui/icons-material';
-import { DossierComplet } from '../services/dossierService';
+import DossierService, {
+  type DossierComplet,
+} from '../services/dossierService';
 import DocumentGenerationForm from '../forms/DocumentGenerationForm';
 
 interface DossierDetailsSheetProps {
@@ -88,7 +90,6 @@ const DossierDetailsSheet: React.FC<DossierDetailsSheetProps> = ({
       console.log('DossierDetailsSheet - Heures dans contenu:', documentData.contenu?.heures);
       console.log('DossierDetailsSheet - Nombre d\'heures:', documentData.contenu?.heures?.length);
       
-      const { default: DossierService } = await import('../services/dossierService');
       
       // Vérifier s'il existe déjà un document du même type
       const existingDocument = dossier.documentsCours.find(doc => 
@@ -134,7 +135,7 @@ const DossierDetailsSheet: React.FC<DossierDetailsSheetProps> = ({
 
   const synchroniserHeuresCours = async (documentData: any) => {
     try {
-      const { default: DossierService } = await import('../services/dossierService');
+      
       
       console.log('Début de la synchronisation pour le type:', documentData.type);
       console.log('Heures à synchroniser:', documentData.contenu.heures);
@@ -332,7 +333,6 @@ const DossierDetailsSheet: React.FC<DossierDetailsSheetProps> = ({
   const handleDeleteDocument = async (document: any) => {
     try {
       if (window.confirm(`Êtes-vous sûr de vouloir supprimer le document "${document.nom}" ?`)) {
-        const { default: DossierService } = await import('../services/dossierService');
         await DossierService.supprimerDocument(dossier.id, document.id);
         onUpdate();
         console.log('Document supprimé:', document.nom);
