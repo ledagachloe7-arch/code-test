@@ -7,7 +7,7 @@ export const API_CONFIG = {
   BASE_URL: isDev
     ? '/api'
     : ((import.meta as any).env?.VITE_API_URL || DEFAULT_BACKEND),
-  TIMEOUT: 30000, // 30 secondes (dashboard et listes lourdes dépassaient 10s)
+  TIMEOUT: 60000, // 60 secondes (évite les coupures de timeout sur les requêtes lourdes)
   /** Timeout plus long pour les appels dashboard (agrégations multi auto-écoles). */
   DASHBOARD_TIMEOUT: 60000, // 60 secondes
   RETRY_ATTEMPTS: 3,

@@ -12,6 +12,7 @@ use Dedoc\Scramble\Attributes\QueryParameter;
 use Dedoc\Scramble\Attributes\Response as ScrambleResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 
 #[Group('Transitions', description: 'Gestion des transitions entre étapes (workflow, circuit_id). Liste, création, mise à jour, suppression.')]
 class TransitionController extends Controller
@@ -23,19 +24,23 @@ class TransitionController extends Controller
     #[ScrambleResponse(200, 'Paginator Laravel : data, links, meta.')]
     public function index(Request $request)
     {
-        $query = Transition::with(['source', 'cible', 'circuit']);
+        $cacheKey = 'transitions:' . md5(json_encode($request->all()));
+        return Cache::tags(['transitions'])->remember($cacheKey, 3600, function () use ($request) {
+            $query = Transition::with(['source', 'cible', 'circuit']);
 
-        if ($request->has('circuit_id')) {
-            $query->where('circuit_id', $request->query('circuit_id'));
-        }
+            if ($request->has('circuit_id')) {
+                $query->where('circuit_id', $request->query('circuit_id'));
+            }
 
-        return $query->paginate($this->perPage($request));
+            return $query->paginate($this->perPage($request));
+        });
     }
 
     public function store(StoreTransitionRequest $request)
     {
         return DB::transaction(function () use ($request) {
             $transition = Transition::create($request->validated());
+            Cache::tags(['transitions'])->flush();
             return response()->json($transition->load(['source', 'cible', 'circuit']), 201);
         });
     }
@@ -48,12 +53,14 @@ class TransitionController extends Controller
     public function update(UpdateTransitionRequest $request, Transition $transition)
     {
         $transition->update($request->validated());
+        Cache::tags(['transitions'])->flush();
         return response()->json($transition->load(['source', 'cible', 'circuit']));
     }
 
     public function destroy(Transition $transition)
     {
         $transition->delete();
+        Cache::tags(['transitions'])->flush();
         return response()->json(['message' => 'Transition supprimée avec succès.']);
     }
 }

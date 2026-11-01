@@ -11,13 +11,13 @@ use Exception;
 class AuthentikService
 {
     protected Client $client;
-    protected string $baseUrl;
-    protected string $apiToken;
+    protected ?string $baseUrl = null;
+    protected ?string $apiToken = null;
 
     public function __construct()
     {
-        $this->baseUrl = rtrim(config('services.authentik.base_url'), '/');
-        $this->apiToken = config('services.authentik.api_token');
+        $this->baseUrl = (string) rtrim(config('services.authentik.base_url') ?? '', '/');
+        $this->apiToken = (string) (config('services.authentik.api_token') ?? '');
         
         $this->client = new Client([
             'base_uri' => $this->baseUrl,

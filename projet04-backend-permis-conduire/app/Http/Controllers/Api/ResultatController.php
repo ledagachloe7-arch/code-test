@@ -19,6 +19,7 @@ use App\Models\Dossier;
 use App\Models\Utilisateur;
 use App\Mail\ResultatBiometrieEmailService;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Cache;
 
 #[Group('Résultats', description: 'Gestion des résultats d\'examen (dossier, typeExamen, statut, date). Liste, création, détail, mise à jour.')]
 class ResultatController extends Controller
@@ -57,12 +58,15 @@ class ResultatController extends Controller
      */
     public function index(Request $request): AnonymousResourceCollection
     {
-        $query = Resultat::with(['dossier']);
+        $cacheKey = 'resultats:' . md5(json_encode($request->all()));
+        $resultats = Cache::tags(['resultats'])->remember($cacheKey, 3600, function () use ($request) {
+            $query = Resultat::with(['dossier']);
 
-        if ($request->has('dossier_id')) {
-            $query->where('dossier_id', $request->dossier_id);
-        }
-        $resultats = $query->latest()->paginate($request->get('per_page', 15));
+            if ($request->has('dossier_id')) {
+                $query->where('dossier_id', $request->dossier_id);
+            }
+            return $query->latest()->paginate($request->get('per_page', 15));
+        });
 
         return ResultatResource::collection($resultats);
     }
@@ -123,6 +127,7 @@ class ResultatController extends Controller
 
         }
         $resultat = Resultat::create($request->validated());
+        Cache::tags(['resultats'])->flush();
 
         return response()->json($resultat, 201);
     }
@@ -218,6 +223,7 @@ class ResultatController extends Controller
             }
 
             DB::commit();
+            Cache::tags(['resultats'])->flush();
 
             return $resultat->load('dossier');
         } catch (\Exception $e) {
@@ -284,6 +290,7 @@ class ResultatController extends Controller
     public function destroy(Resultat $resultat)
     {
         $resultat->delete();
+        Cache::tags(['resultats'])->flush();
         return response()->json(['message' => 'Résultat supprimé']);
     }
 

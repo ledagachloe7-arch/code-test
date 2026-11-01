@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -15,120 +15,124 @@ import {
   Alert,
   CircularProgress,
   DialogContentText,
-} from '@mui/material'
-import AddIcon from '@mui/icons-material/Add'
-import { Statut } from '../types/statut'
-import { statutService } from '../services/statut.service'
+} from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
+import { Statut } from '../types/statut';
+import { statutService } from '../services/statut.service';
 import StatutTable from '../components/StatutTable';
 
-interface ResponseData {
-  data: Statut[],
-  links: any,
-  meta: any
-}
-
 const StatutPage: React.FC = () => {
-  const [openDialog, setOpenDialog] = useState(false)
-  const [editingStatut, setEditingStatut] = useState<Statut | null>(null)
+  const [openDialog, setOpenDialog] = useState(false);
+  const [editingStatut, setEditingStatut] = useState<Statut | null>(null);
   const [formData, setFormData] = useState<Partial<Statut>>({
     code: '',
     libelle: '',
     final: false,
     annulable: false,
-  })
-  const [statuts, setStatuts] = useState<Statut[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [openConfirm, setOpenConfirm] = useState(false)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  });
+  const [statuts, setStatuts] = useState<Statut[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [openConfirm, setOpenConfirm] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // === Charger la liste ===
   const fetchStatuts = async () => {
-    setError(null)
+    setError(null);
     try {
-      setLoading(true)
-      const response: any = await statutService.getAll()
-      setStatuts(response)
+      setLoading(true);
+      const response: any = await statutService.getAll();
+      const items = Array.isArray(response)
+        ? response
+        : Array.isArray(response?.data)
+          ? response.data
+          : Array.isArray(response?.data?.data)
+            ? response.data.data
+            : [];
+      setStatuts(items);
     } catch (err: any) {
-      setError(err.message ?? 'Erreur lors du chargement des statuts')
+      setError(err.message ?? 'Erreur lors du chargement des statuts');
+      setStatuts([]);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   useEffect(() => {
-    fetchStatuts()
-  }, [])
+    fetchStatuts();
+  }, []);
 
   // === Ouvrir / fermer le dialog ===
   const handleOpenDialog = (statut?: Statut) => {
     if (statut) {
-      setEditingStatut(statut)
+      setEditingStatut(statut);
       setFormData({
         code: statut.code,
         libelle: statut.libelle,
         final: statut.final,
         annulable: statut.annulable,
-      })
+      });
     } else {
-      setEditingStatut(null)
+      setEditingStatut(null);
       setFormData({
         code: '',
         libelle: '',
         final: false,
         annulable: false,
-      })
+      });
     }
-    setOpenDialog(true)
-  }
+    setOpenDialog(true);
+  };
 
   const handleCloseDialog = () => {
-    setOpenDialog(false)
-    setEditingStatut(null)
+    setOpenDialog(false);
+    setEditingStatut(null);
     setFormData({
       code: '',
       libelle: '',
       final: false,
       annulable: false,
-    })
-  }
+    });
+  };
 
   // === Soumission du formulaire ===
   const handleSubmit = async () => {
     try {
       if (editingStatut) {
-        await statutService.update(editingStatut.id, formData)
+        await statutService.update(editingStatut.id, formData);
       } else {
-        await statutService.create(formData)
+        await statutService.create(formData);
       }
-      await fetchStatuts()
-      handleCloseDialog()
+      await fetchStatuts();
+      handleCloseDialog();
     } catch (err: any) {
-      setError(err.message ?? 'Erreur lors de la sauvegarde du statut')
+      setError(err.message ?? 'Erreur lors de la sauvegarde du statut');
     }
-  }
+  };
 
   // === Suppression ===
   const handleDelete = (id: string) => {
-    setSelectedId(id)
-    setOpenConfirm(true)
-  }
+    setSelectedId(id);
+    setOpenConfirm(true);
+  };
 
   const confirmDelete = async () => {
     try {
-      await statutService.remove(selectedId as string)
-      setStatuts((prev) => prev.filter((s) => s.id !== selectedId))
+      await statutService.remove(selectedId as string);
+      setStatuts((prev) => (Array.isArray(prev) ? prev.filter((s) => s.id !== selectedId) : []));
     } catch (err: any) {
-      setError(err.message ?? 'Erreur lors de la suppression du statut')
+      setError(err.message ?? 'Erreur lors de la suppression du statut');
     } finally {
-      setOpenConfirm(false)
-      setSelectedId(null)
+      setOpenConfirm(false);
+      setSelectedId(null);
     }
-  }
+  };
 
   const handleCloseConfirm = () => {
-    setOpenConfirm(false)
-  }
+    setOpenConfirm(false);
+  };
+
+  const statutsCount = Array.isArray(statuts) ? statuts.length : 0;
 
   return (
     <Box sx={{ flexGrow: 1 }}>
@@ -173,7 +177,7 @@ const StatutPage: React.FC = () => {
             data={statuts}
             onEdit={handleOpenDialog}
             onDelete={handleDelete}
-            refreshTrigger={statuts.length}
+            refreshTrigger={statutsCount}
           />
         )}
       </Paper>
@@ -191,10 +195,10 @@ const StatutPage: React.FC = () => {
               label="Code"
               value={formData.code ?? ''}
               onChange={(e) => {
-                let value = e.target.value.toUpperCase()
-                value = value.replace(/\s+/g, '')
-                value = value.replace(/[^A-Z0-9_-]/g, '')
-                setFormData({ ...formData, code: value })
+                let value = e.target.value.toUpperCase();
+                value = value.replace(/\s+/g, '');
+                value = value.replace(/[^A-Z0-9_-]/g, '');
+                setFormData({ ...formData, code: value });
               }}
               margin="normal"
             />
@@ -203,10 +207,9 @@ const StatutPage: React.FC = () => {
               label="Libellé"
               value={formData.libelle ?? ''}
               onChange={(e) => {
-                let value = e.target.value
-                // Première lettre en majuscule
-                value = value.charAt(0).toUpperCase() + value.slice(1)
-                setFormData({ ...formData, libelle: value })
+                let value = e.target.value;
+                value = value.charAt(0).toUpperCase() + value.slice(1);
+                setFormData({ ...formData, libelle: value });
               }}
               margin="normal"
             />
@@ -215,7 +218,7 @@ const StatutPage: React.FC = () => {
               <FormControlLabel
                 control={
                   <Checkbox
-                    checked={formData.final ?? false}
+                    checked={!!formData.final}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                       setFormData({ ...formData, final: e.target.checked })
                     }
@@ -226,7 +229,7 @@ const StatutPage: React.FC = () => {
               <FormControlLabel
                 control={
                   <Checkbox
-                    checked={formData.annulable ?? false}
+                    checked={!!formData.annulable}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                       setFormData({ ...formData, annulable: e.target.checked })
                     }
@@ -253,7 +256,7 @@ const StatutPage: React.FC = () => {
         aria-labelledby="alert-dialog-title"
         aria-describedby="alert-dialog-description"
       >
-        <DialogTitle id="alert-dialog-title">{"Suppression du statut ?"}</DialogTitle>
+        <DialogTitle id="alert-dialog-title">{'Suppression du statut ?'}</DialogTitle>
         <DialogContent>
           <DialogContentText id="alert-dialog-description">
             Êtes-vous sûr de vouloir supprimer ce statut ? Cette action est irréversible.
@@ -269,7 +272,7 @@ const StatutPage: React.FC = () => {
         </DialogActions>
       </Dialog>
     </Box>
-  )
-}
+  );
+};
 
-export default StatutPage
+export default StatutPage;

@@ -13,6 +13,7 @@ use Dedoc\Scramble\Attributes\Response as ScrambleResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Cache;
 
 #[Group('Pièces justificatives', description: 'CRUD des pièces justificatives (étapes, documents). Liste paginée, création, détail, mise à jour, suppression.')]
 class PieceJustificativeController extends Controller
@@ -23,11 +24,16 @@ class PieceJustificativeController extends Controller
     #[ScrambleResponse(200, 'Paginator Laravel : data, links, meta.')]
     public function index(Request $request)
     {
-        return PieceJustificative::query()->paginate($this->perPage($request));
+        $cacheKey = 'pieces_justificatives:' . md5(json_encode($request->all()));
+        return Cache::tags(['pieces_justificatives'])->remember($cacheKey, 3600, function () use ($request) {
+            return PieceJustificative::query()->paginate($this->perPage($request));
+        });
     }
     public function store(Request $request)
     {
-        return PieceJustificative::create($request->all());
+        $piece = PieceJustificative::create($request->all());
+        Cache::tags(['pieces_justificatives'])->flush();
+        return $piece;
     }
     public function show(PieceJustificative $piece)
     {
@@ -36,11 +42,13 @@ class PieceJustificativeController extends Controller
     public function update(Request $request, PieceJustificative $piece)
     {
         $piece->update($request->all());
+        Cache::tags(['pieces_justificatives'])->flush();
         return $piece;
     }
     public function destroy(PieceJustificative $piece)
     {
         $piece->delete();
+        Cache::tags(['pieces_justificatives'])->flush();
         return response()->json(['message' => 'Supprimé']);
     }
 

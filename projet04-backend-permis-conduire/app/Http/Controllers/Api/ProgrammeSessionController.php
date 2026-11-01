@@ -20,6 +20,7 @@ use App\Models\Personne;
 use App\Models\Utilisateur;
 use App\Mail\PermisEmailService;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * @OA\Tag(
@@ -48,19 +49,22 @@ class ProgrammeSessionController extends Controller
     public function index(Request $request): AnonymousResourceCollection|JsonResponse
     {
         try {
-            $query = ProgrammeSession::with(['dossier']);
+            $cacheKey = 'programme_sessions:' . md5(json_encode($request->all()));
+            $programmeSessions = Cache::tags(['programme_sessions'])->remember($cacheKey, 3600, function () use ($request) {
+                $query = ProgrammeSession::with(['dossier']);
 
-            // Filtrer par dossier_id si fourni
-            if ($request->has('dossier_id')) {
-                $query->where('dossier_id', $request->dossier_id);
-            }
+                // Filtrer par dossier_id si fourni
+                if ($request->has('dossier_id')) {
+                    $query->where('dossier_id', $request->dossier_id);
+                }
 
-            // Filtrer par date
-            if ($request->has('date_examen')) {
-                $query->whereDate('date_examen', $request->date_examen);
-            }
+                // Filtrer par date
+                if ($request->has('date_examen')) {
+                    $query->whereDate('date_examen', $request->date_examen);
+                }
 
-            $programmeSessions = $query->latest()->paginate($request->get('per_page', 15));
+                return $query->latest()->paginate($request->get('per_page', 15));
+            });
 
             return ProgrammeSessionResource::collection($programmeSessions);
 
@@ -122,6 +126,7 @@ class ProgrammeSessionController extends Controller
             }
 
             DB::commit();
+            Cache::tags(['programme_sessions'])->flush();
             Log::info('Programme session créé', [
                 'programme_session_id' => $programmeSession->id,
                 'dossier_id' => $programmeSession->dossier_id
@@ -164,7 +169,9 @@ class ProgrammeSessionController extends Controller
     public function show(string $id): JsonResponse
     {
         try {
-            $programmeSession = ProgrammeSession::with(['dossier'])->findOrFail($id);
+            $programmeSession = Cache::tags(['programme_sessions'])->remember("programme_sessions:id:{$id}", 3600, function () use ($id) {
+                return ProgrammeSession::with(['dossier'])->findOrFail($id);
+            });
 
             return response()->json([
                 'success' => true,
@@ -229,6 +236,7 @@ class ProgrammeSessionController extends Controller
             $programmeSession->update($updateData);
 
             DB::commit();
+            Cache::tags(['programme_sessions'])->flush();
 
             Log::info('Programme session mise à jour', [
                 'programme_session_id' => $programmeSession->id
@@ -283,6 +291,7 @@ class ProgrammeSessionController extends Controller
             $programmeSession->delete();
 
             DB::commit();
+            Cache::tags(['programme_sessions'])->flush();
 
             Log::info('Programme session supprimé', [
                 'programme_session_id' => $id

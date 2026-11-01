@@ -12,6 +12,7 @@ use Dedoc\Scramble\Attributes\QueryParameter;
 use Dedoc\Scramble\Attributes\Response as ScrambleResponse;
 use Exception;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 #[Group('Statuts', description: 'CRUD des statuts (code, libelle, final, annulable).')]
 class StatutController extends Controller
@@ -22,12 +23,22 @@ class StatutController extends Controller
     #[ScrambleResponse(200, 'Paginator Laravel : data, links, meta.')]
     public function index(Request $request)
     {
-        return Statut::query()->paginate($this->perPage($request));
+        $cacheKey = 'statuts:' . md5(json_encode($request->all()));
+        return Cache::tags(['statuts'])->remember($cacheKey, 3600, function () use ($request) {
+            return Statut::query()->paginate($this->perPage($request));
+        });
     }
 
     public function store(StoreStatutRequest $request)
     {
-        return Statut::create($request->all());
+        $statut = Statut::create($request->all());
+        Cache::tags(['statuts'])->flush();
+        return $statut;
+    }
+
+    public function show(Statut $statut)
+    {
+        return $statut;
     }
 
     /**
@@ -36,6 +47,7 @@ class StatutController extends Controller
     public function update(UpdateStatutRequest $request, Statut $statut)
     {
         $statut->update($request->validated());
+        Cache::tags(['statuts'])->flush();
         return $statut;
     }
 
@@ -45,6 +57,7 @@ class StatutController extends Controller
     public function destroy(Statut $statut)
     {
         $statut->delete();
+        Cache::tags(['statuts'])->flush();
         return response()->json(['message' => 'Statut supprimé']);
     }
 }

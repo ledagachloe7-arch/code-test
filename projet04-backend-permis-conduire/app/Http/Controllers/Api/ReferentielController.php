@@ -16,6 +16,7 @@ use Exception;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -59,17 +60,20 @@ class ReferentielController extends Controller
     #[ScrambleResponse(200, 'Liste paginée des référentiels avec id, libelle, code, type_ref, description, statut, montant, type_demande, type_permis, parent_id ; parent et children présents si chargés.')]
     public function index(Request $request): AnonymousResourceCollection
     {
-        $query = Referentiel::query();
+        $cacheKey = 'referentiels:' . md5(json_encode($request->all()));
+        $referentiels = Cache::tags(['referentiels'])->remember($cacheKey, 3600, function () use ($request) {
+            $query = Referentiel::query();
 
-        if ($request->has('type_ref')) {
-            $query->where('type_ref', $request->type_ref);
-        }
+            if ($request->has('type_ref')) {
+                $query->where('type_ref', $request->type_ref);
+            }
 
-        if ($request->has('statut')) {
-            $query->where('statut', $request->boolean('statut'));
-        }
+            if ($request->has('statut')) {
+                $query->where('statut', $request->boolean('statut'));
+            }
 
-        $referentiels = $query->orderBy('type_ref')->orderBy('libelle')->paginate($request->get('per_page', 15));
+            return $query->orderBy('type_ref')->orderBy('libelle')->paginate($request->get('per_page', 15));
+        });
 
         return ReferentielResource::collection($referentiels);
     }
@@ -122,6 +126,7 @@ class ReferentielController extends Controller
             ]);
 
             $centre->load('parent');
+            Cache::tags(['referentiels'])->flush();
 
             return response()->json([
                 'success' => true,
@@ -170,6 +175,7 @@ class ReferentielController extends Controller
             $referentiel = Referentiel::create($data);
 
             DB::commit();
+            Cache::tags(['referentiels'])->flush();
 
             return response()->json([
                 'success' => true,
@@ -260,6 +266,7 @@ class ReferentielController extends Controller
             $referentiel->update($request->validated());
 
             DB::commit();
+            Cache::tags(['referentiels'])->flush();
 
             Log::info('Référentiel mis à jour', ['referentiel_id' => $id]);
 
@@ -306,6 +313,7 @@ class ReferentielController extends Controller
             $referentiel->delete();
 
             DB::commit();
+            Cache::tags(['referentiels'])->flush();
 
             Log::info('Référentiel supprimé', ['referentiel_id' => $id]);
 

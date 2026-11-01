@@ -11,6 +11,7 @@ use Dedoc\Scramble\Attributes\Group;
 use Dedoc\Scramble\Attributes\QueryParameter;
 use Dedoc\Scramble\Attributes\Response as ScrambleResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 #[Group('Circuits', description: 'Gestion des circuits (étapes, workflow). Liste paginée des circuits avec leurs étapes.')]
 class CircuitController extends Controller
@@ -21,13 +22,17 @@ class CircuitController extends Controller
     #[ScrambleResponse(200, 'Paginator Laravel : data (circuits + etapes), links, meta (current_page, per_page, total, last_page).')]
     public function index(Request $request)
     {
-        return Circuit::with('etapes')->paginate($this->perPage($request));
+        $cacheKey = 'circuits:' . md5(json_encode($request->all()));
+        return Cache::tags(['circuits'])->remember($cacheKey, 3600, function () use ($request) {
+            return Circuit::with('etapes')->paginate($this->perPage($request));
+        });
     }
 
     /** Crée un circuit. Body validé par StoreCircuitRequest (libelle, actif, nom_entite, nationalite, type_permis). Retourne le circuit créé (201). */
     public function store(StoreCircuitRequest $request)
     {
         $circuit = Circuit::create($request->validated());
+        Cache::tags(['circuits'])->flush();
         return response()->json($circuit, 201);
     }
 
@@ -41,6 +46,7 @@ class CircuitController extends Controller
     public function update(UpdateCircuitRequest $request, Circuit $circuit)
     {
         $circuit->update($request->validated());
+        Cache::tags(['circuits'])->flush();
         return $circuit->load('etapes');
     }
 
@@ -48,6 +54,7 @@ class CircuitController extends Controller
     public function destroy(Circuit $circuit)
     {
         $circuit->delete();
+        Cache::tags(['circuits'])->flush();
         return response()->json(['message' => 'Circuit supprimé']);
     }
 }

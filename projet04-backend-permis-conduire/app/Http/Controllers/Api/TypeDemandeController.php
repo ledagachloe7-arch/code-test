@@ -14,6 +14,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * @OA\Tag(
@@ -62,7 +63,10 @@ class TypeDemandeController extends Controller
     #[ScrambleResponse(200, 'Liste paginée des types de demandes (id, name, created_at, updated_at).')]
     public function index(): AnonymousResourceCollection
     {
-        $typeDemandes = TypeDemande::latest()->paginate(request()->get('per_page', 15));
+        $cacheKey = 'type_demandes:' . md5(json_encode(request()->all()));
+        $typeDemandes = Cache::tags(['type_demandes'])->remember($cacheKey, 3600, function () {
+            return TypeDemande::latest()->paginate(request()->get('per_page', 15));
+        });
 
         return TypeDemandeResource::collection($typeDemandes);
     }
@@ -106,6 +110,7 @@ class TypeDemandeController extends Controller
             $typeDemande = TypeDemande::create($request->validated());
 
             DB::commit();
+            Cache::tags(['type_demandes'])->flush();
 
             Log::info('Type de demande créé', ['type_demande_id' => $typeDemande->id]);
 
@@ -156,7 +161,9 @@ class TypeDemandeController extends Controller
     public function show(string $id): JsonResponse
     {
         try {
-            $typeDemande = TypeDemande::findOrFail($id);
+            $typeDemande = Cache::tags(['type_demandes'])->remember("type_demandes:id:{$id}", 3600, function () use ($id) {
+                return TypeDemande::findOrFail($id);
+            });
 
             return response()->json([
                 'success' => true,
@@ -214,6 +221,7 @@ class TypeDemandeController extends Controller
             $typeDemande->update($request->validated());
 
             DB::commit();
+            Cache::tags(['type_demandes'])->flush();
 
             Log::info('Type de demande mis à jour', ['type_demande_id' => $id]);
 
@@ -273,6 +281,7 @@ class TypeDemandeController extends Controller
             $typeDemande->delete();
 
             DB::commit();
+            Cache::tags(['type_demandes'])->flush();
 
             Log::info('Type de demande supprimé', ['type_demande_id' => $id]);
 

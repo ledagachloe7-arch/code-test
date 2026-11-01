@@ -92,64 +92,36 @@ export const RolePermissionsProvider: React.FC<{
     setError(null);
 
     try {
-      // 1. Récupération des rôles
-      const rolesData = await roleService.getAll();
+      // Optimisation majeure : récupération en 2 requêtes globales au lieu de 9 requêtes séquentielles
+      const [rolesData, allRecords] = await Promise.all([
+        roleService.getAll().catch(() => []),
+        rolePermissionsService.getAllRolePermissions().catch(() => []),
+      ]);
 
       const rolesList = normalizeRolesFromApi(rolesData);
-
-      console.log('[RBAC] Rôles récupérés :', rolesList);
-
-      if (rolesList.length === 0) {
-        console.warn('[RBAC] Aucun rôle retourné par l’API.');
-
-        setRoles([]);
-        setRolePermissions({});
-        setRolePermissionIds({});
-
-        return;
-      }
-
-      // 2. Récupération des permissions de chaque rôle
-      const records = await Promise.all(
-        rolesList.map(async (role) => {
-          try {
-            const record =
-              await rolePermissionsService.getRolePermissionRecord(role);
-
-            console.log(
-              `[RBAC] Permissions du rôle ${role} :`,
-              record?.permissions ?? []
-            );
-
-            return record;
-          } catch (err) {
-            console.error(
-              `[RBAC] Erreur de récupération des permissions pour ${role} :`,
-              err
-            );
-
-            return { permissions: [] };
-          }
-        })
-      );
-
-      // 3. Construction des maps
       const permissionsMap: RolePermissionsMap = {};
       const idsMap: RolePermissionIdsMap = {};
 
-      rolesList.forEach((role, index) => {
-        permissionsMap[role] = records[index]?.permissions ?? [];
-
-        if (records[index]?.id !== undefined) {
-          idsMap[role] = records[index].id as number | string;
+      allRecords.forEach((record) => {
+        permissionsMap[record.role] = record.permissions;
+        if (record.id !== undefined) {
+          idsMap[record.role] = record.id;
         }
       });
 
-      setRoles(rolesList);
+      rolesList.forEach((role) => {
+        if (!permissionsMap[role]) {
+          permissionsMap[role] = [];
+        }
+      });
+
+      const finalRoles = rolesList.length > 0 ? rolesList : allRecords.map((r) => r.role);
+
+      setRoles(finalRoles);
       setRolePermissions(permissionsMap);
       setRolePermissionIds(idsMap);
 
-      console.log('[RBAC] Chargement terminé :', permissionsMap);
+      console.log('[RBAC] Chargement optimisé terminé :', permissionsMap);
     } catch (err: unknown) {
       const message =
         err instanceof Error
@@ -166,7 +138,6 @@ export const RolePermissionsProvider: React.FC<{
       setLoading(false);
     }
   }, []);
-
   /**
    * Mise à jour des permissions d'un rôle.
    */

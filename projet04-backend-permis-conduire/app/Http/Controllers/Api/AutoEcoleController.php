@@ -25,6 +25,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * @OA\Server(
@@ -75,13 +76,16 @@ class AutoEcoleController extends Controller
     #[ScrambleResponse(200, 'Collection paginée `AutoEcoleResource` : responsable, province, dossiers, formations.typePermis.')]
     public function index(Request $request): AnonymousResourceCollection
     {
-        $query = AutoEcole::with(['responsable','province', 'dossiers','formations.typePermis']);
+        $cacheKey = 'auto_ecoles:index:' . md5(json_encode($request->all()));
+        $autoEcoles = Cache::tags(['auto_ecoles'])->remember($cacheKey, 3600, function () use ($request) {
+            $query = AutoEcole::with(['responsable','province', 'dossiers','formations.typePermis']);
 
-        if ($request->has('statut')) {
-            $query->where('statut', $request->boolean('statut'));
-        }
+            if ($request->has('statut')) {
+                $query->where('statut', $request->boolean('statut'));
+            }
 
-        $autoEcoles = $query->latest()->paginate($request->get('per_page', 15));
+            return $query->latest()->paginate($request->get('per_page', 15));
+        });
 
         return AutoEcoleResource::collection($autoEcoles);
     }
@@ -105,32 +109,41 @@ class AutoEcoleController extends Controller
     #[ScrambleResponse(401, 'Jeton Bearer absent ou invalide.', type: 'array{message: string}')]
     public function indexComplets(Request $request): JsonResponse
     {
-        $query = AutoEcole::query()->with($this->autoEcoleCompletRelations());
+        $cacheKey = 'auto_ecoles:complets:' . md5(json_encode($request->all()));
+        $data = Cache::tags(['auto_ecoles'])->remember($cacheKey, 3600, function () use ($request) {
+            $query = AutoEcole::query()->with($this->autoEcoleCompletRelations());
 
-        if ($request->has('statut')) {
-            $query->where('statut', $request->boolean('statut'));
-        }
+            if ($request->has('statut')) {
+                $query->where('statut', $request->boolean('statut'));
+            }
 
-        $autoEcoles = $query->latest()->paginate($this->perPage($request));
+            $autoEcoles = $query->latest()->paginate($this->perPage($request));
+
+            return [
+                'data' => AutoEcoleCompletResource::collection($autoEcoles->items())->resolve(),
+                'meta' => [
+                    'current_page' => $autoEcoles->currentPage(),
+                    'last_page' => $autoEcoles->lastPage(),
+                    'per_page' => $autoEcoles->perPage(),
+                    'total' => $autoEcoles->total(),
+                    'from' => $autoEcoles->firstItem(),
+                    'to' => $autoEcoles->lastItem(),
+                ],
+                'links' => [
+                    'first' => $autoEcoles->url(1),
+                    'last' => $autoEcoles->url($autoEcoles->lastPage()),
+                    'prev' => $autoEcoles->previousPageUrl(),
+                    'next' => $autoEcoles->nextPageUrl(),
+                ],
+            ];
+        });
 
         return response()->json([
             'success' => true,
             'message' => 'Liste des auto-écoles récupérée avec succès.',
-            'data' => AutoEcoleCompletResource::collection($autoEcoles->items()),
-            'meta' => [
-                'current_page' => $autoEcoles->currentPage(),
-                'last_page' => $autoEcoles->lastPage(),
-                'per_page' => $autoEcoles->perPage(),
-                'total' => $autoEcoles->total(),
-                'from' => $autoEcoles->firstItem(),
-                'to' => $autoEcoles->lastItem(),
-            ],
-            'links' => [
-                'first' => $autoEcoles->url(1),
-                'last' => $autoEcoles->url($autoEcoles->lastPage()),
-                'prev' => $autoEcoles->previousPageUrl(),
-                'next' => $autoEcoles->nextPageUrl(),
-            ],
+            'data' => $data['data'],
+            'meta' => $data['meta'],
+            'links' => $data['links'],
         ]);
     }
 
@@ -151,12 +164,16 @@ class AutoEcoleController extends Controller
     #[ScrambleResponse(401, 'Jeton Bearer absent ou invalide.', type: 'array{message: string}')]
     public function showCnepc(): JsonResponse
     {
-        $autoEcole = AutoEcole::query()
-            ->with($this->autoEcoleCompletRelations())
-            ->where('nom_auto_ecole', self::CNEPC_NOM)
-            ->first();
+        $cached = Cache::tags(['auto_ecoles'])->remember('auto_ecoles:cnepc', 3600, function () {
+            $autoEcole = AutoEcole::query()
+                ->with($this->autoEcoleCompletRelations())
+                ->where('nom_auto_ecole', self::CNEPC_NOM)
+                ->first();
 
-        if (!$autoEcole) {
+            return $autoEcole ? (new AutoEcoleCompletResource($autoEcole))->resolve() : null;
+        });
+
+        if (!$cached) {
             return response()->json([
                 'success' => false,
                 'message' => 'Auto-école CNEPC introuvable.',
@@ -166,7 +183,7 @@ class AutoEcoleController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Auto-école CNEPC récupérée avec succès.',
-            'data' => new AutoEcoleCompletResource($autoEcole),
+            'data' => $cached,
         ]);
     }
 
@@ -299,6 +316,7 @@ class AutoEcoleController extends Controller
             $autoEcole = AutoEcole::create($request->validated());
 
             DB::commit();
+            Cache::tags(['auto_ecoles'])->flush();
 
             Log::info('Auto-école créée', ['auto_ecole_id' => $autoEcole->id]);
 
@@ -340,7 +358,9 @@ class AutoEcoleController extends Controller
     public function show(string $id): JsonResponse
     {
         try {
-            $autoEcole = AutoEcole::with(['responsable','province', 'dossiers','formations'])->findOrFail($id);
+            $autoEcole = Cache::tags(['auto_ecoles'])->remember("auto_ecoles:id:{$id}", 3600, function () use ($id) {
+                return AutoEcole::with(['responsable','province', 'dossiers','formations'])->findOrFail($id);
+            });
 
             return response()->json([
                 'success' => true,
@@ -388,6 +408,7 @@ class AutoEcoleController extends Controller
             $autoEcole->update($request->validated());
 
             DB::commit();
+            Cache::tags(['auto_ecoles'])->flush();
 
             Log::info('Auto-école mise à jour', ['auto_ecole_id' => $id]);
 
@@ -432,6 +453,7 @@ class AutoEcoleController extends Controller
             $autoEcole->delete();
 
             DB::commit();
+            Cache::tags(['auto_ecoles'])->flush();
 
             Log::info('Auto-école supprimée', ['auto_ecole_id' => $id]);
 

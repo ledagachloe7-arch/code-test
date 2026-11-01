@@ -1,7 +1,4 @@
-import React, {
-  // useState,
-  useEffect
-} from 'react';
+import React, { useEffect } from 'react';
 import {
   Table,
   TableBody,
@@ -11,32 +8,29 @@ import {
   TableRow,
   Paper,
   IconButton,
-  // Box,
   Typography,
   Checkbox,
-  // CircularProgress,
 } from '@mui/material';
-import { EyeIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { Statut } from '../types/statut';
-// import { statutService } from '../services/statut.service';
 
 interface StatutTableProps {
   onStatutSelect?: (statut: Statut) => void;
   onEdit?: (statut: Statut) => void;
   onDelete?: (id: string) => void;
-  refreshTrigger?: number; // pour rafraîchir la table après création ou suppression
-  data: Statut[]
+  refreshTrigger?: number;
+  data: Statut[];
 }
 
 const StatutTable: React.FC<StatutTableProps> = ({
-  onStatutSelect,
   onEdit,
   onDelete,
   refreshTrigger,
   data
 }) => {
-  // const [statuts, setStatuts] = useState<Statut[]>([]);
-  // const [loading, setLoading] = useState(true);
+  const statutsList: Statut[] = Array.isArray(data)
+    ? data
+    : (Array.isArray((data as any)?.data) ? (data as any).data : []);
 
   useEffect(() => {
     
@@ -55,7 +49,7 @@ const StatutTable: React.FC<StatutTableProps> = ({
           </TableRow>
         </TableHead>
         <TableBody>
-          {data.length === 0 ? (
+          {statutsList.length === 0 ? (
             <TableRow>
               <TableCell colSpan={5} align="center">
                 <Typography color="text.secondary" sx={{ py: 3 }}>
@@ -64,7 +58,7 @@ const StatutTable: React.FC<StatutTableProps> = ({
               </TableCell>
             </TableRow>
           ) : (
-            data.map((statut) => (
+            statutsList.map((statut: Statut) => (
               <TableRow key={statut.id} hover>
                 <TableCell>
                   <Typography variant="body2" fontWeight="bold">
@@ -73,7 +67,7 @@ const StatutTable: React.FC<StatutTableProps> = ({
                 </TableCell>
                 <TableCell>{statut.libelle}</TableCell>
                 <TableCell>
-                  <Checkbox checked={statut.final} disabled />
+                  <Checkbox checked={!!statut.final} disabled />
                 </TableCell>
                 <TableCell>
                   <Checkbox checked={!!statut.annulable} disabled />

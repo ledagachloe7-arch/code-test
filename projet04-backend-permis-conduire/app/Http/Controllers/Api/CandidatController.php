@@ -26,6 +26,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 use App\Services\{CandidatFilterService, PaiementAirtelService, PaiementHistoriqueService};
 /**
  * @OA\Server(
@@ -94,38 +95,40 @@ class CandidatController extends Controller
     #[ScrambleResponse(200, 'Liste paginée des candidats avec relation personne.')]
     public function index(Request $request): AnonymousResourceCollection
     {
-        $perPage = $request->get('per_page', 15);
+        $cacheKey = 'candidats:' . md5(json_encode($request->all()));
+        $candidats = Cache::tags(['candidats'])->remember($cacheKey, 3600, function () use ($request) {
+            $perPage = $request->get('per_page', 15);
 
-        $candidats = Candidat::with('personne')
-            ->byPersonne($request->personne_id)
+            return Candidat::with('personne')
+                ->byPersonne($request->personne_id)
 
-            ->when(
-                $request->numero_candidat,
-                fn($q) =>
-                $q->where('numero_candidat', 'like', "%{$request->numero_candidat}%")
-            )
+                ->when(
+                    $request->numero_candidat,
+                    fn($q) =>
+                    $q->where('numero_candidat', 'like', "%{$request->numero_candidat}%")
+                )
 
-            ->when(
-                $request->nip,
-                fn($q) =>
-                $q->where('nip', 'like', "%{$request->nip}%")
-            )
+                ->when(
+                    $request->nip,
+                    fn($q) =>
+                    $q->where('nip', 'like', "%{$request->nip}%")
+                )
 
-            ->when(
-                $request->genre,
-                fn($q) =>
-                $q->where('genre', $request->genre)
-            )
+                ->when(
+                    $request->genre,
+                    fn($q) =>
+                    $q->where('genre', $request->genre)
+                )
 
-            ->when(
-                $request->nationalite,
-                fn($q) =>
-                $q->where('nationalite', $request->nationalite)
-            )
+                ->when(
+                    $request->nationalite,
+                    fn($q) =>
+                    $q->where('nationalite', $request->nationalite)
+                )
 
-            ->latest()
-            ->paginate($perPage);
-        ;
+                ->latest()
+                ->paginate($perPage);
+        });
 
         return CandidatResource::collection($candidats);
     }
@@ -175,6 +178,7 @@ class CandidatController extends Controller
 
 
             DB::commit();
+            Cache::tags(['candidats'])->flush();
 
             Log::info('Candidat créé', ['candidat_id' => $candidat->id]);
 
@@ -223,7 +227,9 @@ class CandidatController extends Controller
     public function show(string $id): JsonResponse
     {
         try {
-            $candidat = Candidat::with(['personne', 'dossiers'])->findOrFail($id);
+            $candidat = Cache::tags(['candidats'])->remember("candidats:id:{$id}", 3600, function () use ($id) {
+                return Candidat::with(['personne', 'dossiers'])->findOrFail($id);
+            });
 
             return response()->json([
                 'success' => true,
@@ -280,6 +286,7 @@ class CandidatController extends Controller
             $candidat->update($request->validated());
 
             DB::commit();
+            Cache::tags(['candidats'])->flush();
 
             Log::info('Candidat mis à jour', ['candidat_id' => $candidat->id]);
 
@@ -339,6 +346,7 @@ class CandidatController extends Controller
             $candidat->delete();
 
             DB::commit();
+            Cache::tags(['candidats'])->flush();
 
             Log::info('Candidat supprimé', ['candidat_id' => $id]);
 

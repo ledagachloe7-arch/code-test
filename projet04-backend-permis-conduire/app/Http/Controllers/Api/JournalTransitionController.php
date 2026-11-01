@@ -9,6 +9,7 @@ use Dedoc\Scramble\Attributes\Group;
 use Dedoc\Scramble\Attributes\QueryParameter;
 use Dedoc\Scramble\Attributes\Response as ScrambleResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 #[Group('Journal des transitions', description: 'Historique des transitions (circuit_id, date_heure). Liste paginée du journal.')]
 class JournalTransitionController extends Controller
@@ -20,16 +21,18 @@ class JournalTransitionController extends Controller
     #[ScrambleResponse(200, 'Paginator Laravel : data, links, meta.')]
     public function index(Request $request)
     {
-        $query = JournalTransition::with(['transition', 'circuit']); // relations utiles
+        $cacheKey = 'journal_transitions:' . md5(json_encode($request->all()));
+        $journaux = Cache::tags(['journal_transitions'])->remember($cacheKey, 3600, function () use ($request) {
+            $query = JournalTransition::with(['transition', 'circuit']);
 
-        // Si un circuit_id est fourni dans l'URL
-        if ($request->has('circuit_id')) {
-            $query->where('circuit_id', $request->query('circuit_id'));
-        }
+            if ($request->has('circuit_id')) {
+                $query->where('circuit_id', $request->query('circuit_id'));
+            }
 
-        $journaux = $query
-            ->orderBy('date_heure', 'desc')
-            ->paginate($this->perPage($request));
+            return $query
+                ->orderBy('date_heure', 'desc')
+                ->paginate($this->perPage($request));
+        });
 
         return response()->json($journaux);
     }
@@ -51,6 +54,7 @@ class JournalTransitionController extends Controller
     public function destroy(JournalTransition $journalTransition)
     {
         $journalTransition->delete();
+        Cache::tags(['journal_transitions'])->flush();
         return response()->json(['message' => 'Transition supprimé']);
     }
     

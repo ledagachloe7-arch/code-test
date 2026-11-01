@@ -21,6 +21,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * @OA\Server(
@@ -56,17 +57,20 @@ class FormationAutoEcoleController extends Controller
      */
     public function index(Request $request): AnonymousResourceCollection
     {
-        $query = FormationAutoEcole::with(['autoEcole', 'typePermis', 'session']);
+        $cacheKey = 'formations:' . md5(json_encode($request->all()));
+        $formations = Cache::tags(['formations'])->remember($cacheKey, 3600, function () use ($request) {
+            $query = FormationAutoEcole::with(['autoEcole', 'typePermis', 'session']);
 
-        if ($request->has('auto_ecole_id')) {
-            $query->where('auto_ecole_id', $request->auto_ecole_id);
-        }
+            if ($request->has('auto_ecole_id')) {
+                $query->where('auto_ecole_id', $request->auto_ecole_id);
+            }
 
-        if ($request->has('statut')) {
-            $query->where('statut', $request->boolean('statut'));
-        }
+            if ($request->has('statut')) {
+                $query->where('statut', $request->boolean('statut'));
+            }
 
-        $formations = $query->latest()->paginate($request->get('per_page', 15));
+            return $query->latest()->paginate($request->get('per_page', 15));
+        });
 
         return FormationAutoEcoleResource::collection($formations);
     }
@@ -101,6 +105,7 @@ class FormationAutoEcoleController extends Controller
             $formation = FormationAutoEcole::create($request->validated());
 
             DB::commit();
+            Cache::tags(['formations', 'auto_ecoles'])->flush();
 
             Log::info('Formation créée', ['formation_id' => $formation->id]);
 
@@ -137,7 +142,9 @@ class FormationAutoEcoleController extends Controller
     public function show(string $id): JsonResponse
     {
         try {
-            $formation = FormationAutoEcole::with(['autoEcole', 'typePermis', 'session', 'dossiers'])->findOrFail($id);
+            $formation = Cache::tags(['formations'])->remember("formations:id:{$id}", 3600, function () use ($id) {
+                return FormationAutoEcole::with(['autoEcole', 'typePermis', 'session', 'dossiers'])->findOrFail($id);
+            });
 
             return response()->json([
                 'success' => true,
@@ -178,6 +185,7 @@ class FormationAutoEcoleController extends Controller
             $formation->update($request->validated());
 
             DB::commit();
+            Cache::tags(['formations', 'auto_ecoles'])->flush();
 
             Log::info('Formation mise à jour', ['formation_id' => $id]);
 
@@ -217,6 +225,7 @@ class FormationAutoEcoleController extends Controller
             $formation->delete();
 
             DB::commit();
+            Cache::tags(['formations', 'auto_ecoles'])->flush();
 
             Log::info('Formation supprimée', ['formation_id' => $id]);
 
@@ -265,33 +274,43 @@ class FormationAutoEcoleController extends Controller
     public function documentsRequis(Request $request, string $id): JsonResponse
     {
         try {
-            $formation = FormationAutoEcole::with(['typePermis', 'session'])->findOrFail($id);
+            $cacheKey = "formations:documents_requis:{$id}:" . md5(json_encode($request->all()));
+            $data = Cache::tags(['formations', 'pieces_justificatives'])->remember($cacheKey, 3600, function () use ($id, $request) {
+                $formation = FormationAutoEcole::with(['typePermis', 'session'])->findOrFail($id);
 
-            $paginator = PieceJustificative::where('type_permis_id', $formation->type_permis_id)
-                ->where('obligatoire', true)
-                ->with('typeDocument')
-                ->paginate($this->perPage($request));
+                $paginator = PieceJustificative::where('type_permis_id', $formation->type_permis_id)
+                    ->where('obligatoire', true)
+                    ->with('typeDocument')
+                    ->paginate($this->perPage($request));
 
-            $documentsRequis = collect($paginator->items())->map(function ($piece) {
+                $documentsRequis = collect($paginator->items())->map(function ($piece) {
+                    return [
+                        'id' => $piece->id,
+                        'type_document' => (new ReferentielResource($piece->typeDocument))->resolve(),
+                        'obligatoire' => $piece->obligatoire,
+                        'is_national' => $piece->is_national,
+                    ];
+                })->values();
+
                 return [
-                    'id' => $piece->id,
-                    'type_document' => new ReferentielResource($piece->typeDocument),
-                    'obligatoire' => $piece->obligatoire,
-                    'is_national' => $piece->is_national,
+                    'formation' => (new FormationAutoEcoleResource($formation))->resolve(),
+                    'documents_requis' => $documentsRequis,
+                    'total_documents' => $paginator->total(),
+                    'pagination' => [
+                        'current_page' => $paginator->currentPage(),
+                        'last_page' => $paginator->lastPage(),
+                        'per_page' => $paginator->perPage(),
+                        'total' => $paginator->total(),
+                    ],
                 ];
-            })->values();
+            });
 
             return response()->json([
                 'success' => true,
-                'formation' => new FormationAutoEcoleResource($formation),
-                'documents_requis' => $documentsRequis,
-                'total_documents' => $paginator->total(),
-                'pagination' => [
-                    'current_page' => $paginator->currentPage(),
-                    'last_page' => $paginator->lastPage(),
-                    'per_page' => $paginator->perPage(),
-                    'total' => $paginator->total(),
-                ],
+                'formation' => $data['formation'],
+                'documents_requis' => $data['documents_requis'],
+                'total_documents' => $data['total_documents'],
+                'pagination' => $data['pagination'],
             ]);
 
         } catch (Exception $e) {

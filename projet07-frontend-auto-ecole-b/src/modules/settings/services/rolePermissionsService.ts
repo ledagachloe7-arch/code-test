@@ -27,6 +27,23 @@ type PermissionsByRoleResponse =
   | { id?: number | string; permission?: string[]; permissions?: string[]; data?: { id?: number | string; permission?: string[] } };
 
 class RolePermissionsService extends BaseService {
+  /**
+   * GET /role-has-permissions?per_page=100 : récupère toutes les permissions de tous les rôles en 1 SEULE requête HTTP.
+   */
+  async getAllRolePermissions(): Promise<Array<{ id: number | string; role: string; permissions: string[] }>> {
+    const response = await this.api.get<{ success: boolean; data: any[] }>(`${this.endpoint}?per_page=100`);
+    const items = response.data?.data ?? [];
+    return items.map((item) => {
+      let permissions: string[] = [];
+      const perm = item.permission ?? item.permissions;
+      if (Array.isArray(perm)) permissions = perm.map(String);
+      return {
+        id: item.id,
+        role: String(item.role),
+        permissions,
+      };
+    });
+  }
   private readonly endpoint = API_ENDPOINTS.ROLE_PERMISSIONS;
 
   /**

@@ -9,6 +9,7 @@ use Dedoc\Scramble\Attributes\Group;
 use Dedoc\Scramble\Attributes\QueryParameter;
 use Dedoc\Scramble\Attributes\Response as ScrambleResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 #[Group('Rôles', description: 'CRUD des rôles (code, libelle). Liste paginée, création, détail, mise à jour, suppression.')]
 class RoleController extends Controller
@@ -19,13 +20,18 @@ class RoleController extends Controller
     #[ScrambleResponse(200, 'Paginator Laravel : data, links, meta.')]
     public function index(Request $request)
     {
-        return Role::query()->paginate($this->perPage($request));
+        $cacheKey = 'roles:' . md5(json_encode($request->all()));
+        return Cache::tags(['roles'])->remember($cacheKey, 3600, function () use ($request) {
+            return Role::query()->paginate($this->perPage($request));
+        });
     }
 
     /** Crée un rôle. Body : code, libelle. */
     public function store(Request $request)
     {
-        return Role::create($request->all());
+        $role = Role::create($request->all());
+        Cache::tags(['roles'])->flush();
+        return $role;
     }
     /** Détail d'un rôle par ID. */
     public function show(Role $role)
@@ -37,6 +43,7 @@ class RoleController extends Controller
     public function update(Request $request, Role $role)
     {
         $role->update($request->all());
+        Cache::tags(['roles'])->flush();
         return $role;
     }
 
@@ -44,6 +51,7 @@ class RoleController extends Controller
     public function destroy(Role $role)
     {
         $role->delete();
+        Cache::tags(['roles'])->flush();
         return response()->json(['message' => 'Supprimé']);
     }
 }

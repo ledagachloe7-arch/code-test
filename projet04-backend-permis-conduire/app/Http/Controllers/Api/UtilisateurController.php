@@ -12,6 +12,7 @@ use Dedoc\Scramble\Attributes\Group;
 use Dedoc\Scramble\Attributes\QueryParameter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 
 #[Group('Utilisateurs', description: 'Liste et gestion des utilisateurs. Endpoints dédiés : candidats (ROLE_CANDIDAT) et agents (rôles différents du candidat) avec filtres et pagination.')]
@@ -48,51 +49,60 @@ class UtilisateurController extends Controller
     #[QueryParameter('page', description: 'Numéro de page', type: 'integer', required: false)]
     public function indexCandidats(Request $request): JsonResponse
     {
-        $perPage = min(max((int) $request->input('per_page', 15), 1), 100);
+        $cacheKey = 'utilisateurs:candidats:' . md5(json_encode($request->all()));
+        $data = Cache::tags(['utilisateurs'])->remember($cacheKey, 3600, function () use ($request) {
+            $perPage = min(max((int) $request->input('per_page', 15), 1), 100);
 
-        $query = Utilisateur::query()
-            ->with('personne')
-            ->where(function ($q) {
-                $q->where('role', 'ROLE_CANDIDAT')->orWhere('role', 'candidat');
-            });
+            $query = Utilisateur::query()
+                ->with('personne')
+                ->where(function ($q) {
+                    $q->where('role', 'ROLE_CANDIDAT')->orWhere('role', 'candidat');
+                });
 
-        if ($search = $request->input('search')) {
-            $term = '%' . $search . '%';
-            $query->where(function ($q) use ($term) {
-                $q->where('email', 'ilike', $term)
-                    ->orWhere('telephone', 'ilike', $term)
-                    ->orWhereHas('personne', function ($p) use ($term) {
-                        $p->where('nom', 'ilike', $term)->orWhere('prenom', 'ilike', $term);
-                    });
-            });
-        }
-        if ($request->filled('email')) {
-            $query->where('email', 'ilike', '%' . $request->input('email') . '%');
-        }
-        if ($request->filled('telephone')) {
-            $query->where('telephone', 'ilike', '%' . $request->input('telephone') . '%');
-        }
+            if ($search = $request->input('search')) {
+                $term = '%' . $search . '%';
+                $query->where(function ($q) use ($term) {
+                    $q->where('email', 'ilike', $term)
+                        ->orWhere('telephone', 'ilike', $term)
+                        ->orWhereHas('personne', function ($p) use ($term) {
+                            $p->where('nom', 'ilike', $term)->orWhere('prenom', 'ilike', $term);
+                        });
+                });
+            }
+            if ($request->filled('email')) {
+                $query->where('email', 'ilike', '%' . $request->input('email') . '%');
+            }
+            if ($request->filled('telephone')) {
+                $query->where('telephone', 'ilike', '%' . $request->input('telephone') . '%');
+            }
 
-        $paginator = $query->latest()->paginate($perPage);
+            $paginator = $query->latest()->paginate($perPage);
+
+            return [
+                'data' => UtilisateurResource::collection($paginator)->resolve(),
+                'meta' => [
+                    'current_page' => $paginator->currentPage(),
+                    'per_page' => $paginator->perPage(),
+                    'total' => $paginator->total(),
+                    'last_page' => $paginator->lastPage(),
+                    'from' => $paginator->firstItem(),
+                    'to' => $paginator->lastItem(),
+                ],
+                'links' => [
+                    'first' => $paginator->url(1),
+                    'last' => $paginator->url($paginator->lastPage()),
+                    'prev' => $paginator->previousPageUrl(),
+                    'next' => $paginator->nextPageUrl(),
+                ],
+            ];
+        });
 
         return response()->json([
             'success' => true,
             'message' => 'Liste des candidats récupérée avec succès.',
-            'data' => UtilisateurResource::collection($paginator),
-            'meta' => [
-                'current_page' => $paginator->currentPage(),
-                'per_page' => $paginator->perPage(),
-                'total' => $paginator->total(),
-                'last_page' => $paginator->lastPage(),
-                'from' => $paginator->firstItem(),
-                'to' => $paginator->lastItem(),
-            ],
-            'links' => [
-                'first' => $paginator->url(1),
-                'last' => $paginator->url($paginator->lastPage()),
-                'prev' => $paginator->previousPageUrl(),
-                'next' => $paginator->nextPageUrl(),
-            ],
+            'data' => $data['data'],
+            'meta' => $data['meta'],
+            'links' => $data['links'],
         ]);
     }
 
@@ -110,57 +120,66 @@ class UtilisateurController extends Controller
     #[QueryParameter('page', description: 'Numéro de page', type: 'integer', required: false)]
     public function indexAgents(Request $request): JsonResponse
     {
-        $perPage = min(max((int) $request->input('per_page', 15), 1), 100);
+        $cacheKey = 'utilisateurs:agents:' . md5(json_encode($request->all()));
+        $data = Cache::tags(['utilisateurs'])->remember($cacheKey, 3600, function () use ($request) {
+            $perPage = min(max((int) $request->input('per_page', 15), 1), 100);
 
-        $query = Utilisateur::query()
-            ->with(['personne', 'centre'])
-            ->where(function ($q) {
-                $q->where('role', '!=', 'ROLE_CANDIDAT')->where('role', '!=', 'candidat');
-            });
+            $query = Utilisateur::query()
+                ->with(['personne', 'centre'])
+                ->where(function ($q) {
+                    $q->where('role', '!=', 'ROLE_CANDIDAT')->where('role', '!=', 'candidat');
+                });
 
-        if ($search = $request->input('search')) {
-            $term = '%' . $search . '%';
-            $query->where(function ($q) use ($term) {
-                $q->where('email', 'ilike', $term)
-                    ->orWhere('telephone', 'ilike', $term)
-                    ->orWhereHas('personne', function ($p) use ($term) {
-                        $p->where('nom', 'ilike', $term)->orWhere('prenom', 'ilike', $term);
-                    });
-            });
-        }
-        if ($request->filled('role')) {
-            $query->where('role', $request->input('role'));
-        }
-        if ($request->filled('centre_id')) {
-            $query->where('centre_id', $request->input('centre_id'));
-        }
-        if ($request->filled('email')) {
-            $query->where('email', 'ilike', '%' . $request->input('email') . '%');
-        }
-        if ($request->filled('telephone')) {
-            $query->where('telephone', 'ilike', '%' . $request->input('telephone') . '%');
-        }
+            if ($search = $request->input('search')) {
+                $term = '%' . $search . '%';
+                $query->where(function ($q) use ($term) {
+                    $q->where('email', 'ilike', $term)
+                        ->orWhere('telephone', 'ilike', $term)
+                        ->orWhereHas('personne', function ($p) use ($term) {
+                            $p->where('nom', 'ilike', $term)->orWhere('prenom', 'ilike', $term);
+                        });
+                });
+            }
+            if ($request->filled('role')) {
+                $query->where('role', $request->input('role'));
+            }
+            if ($request->filled('centre_id')) {
+                $query->where('centre_id', $request->input('centre_id'));
+            }
+            if ($request->filled('email')) {
+                $query->where('email', 'ilike', '%' . $request->input('email') . '%');
+            }
+            if ($request->filled('telephone')) {
+                $query->where('telephone', 'ilike', '%' . $request->input('telephone') . '%');
+            }
 
-        $paginator = $query->latest()->paginate($perPage);
+            $paginator = $query->latest()->paginate($perPage);
+
+            return [
+                'data' => UtilisateurResource::collection($paginator)->resolve(),
+                'meta' => [
+                    'current_page' => $paginator->currentPage(),
+                    'per_page' => $paginator->perPage(),
+                    'total' => $paginator->total(),
+                    'last_page' => $paginator->lastPage(),
+                    'from' => $paginator->firstItem(),
+                    'to' => $paginator->lastItem(),
+                ],
+                'links' => [
+                    'first' => $paginator->url(1),
+                    'last' => $paginator->url($paginator->lastPage()),
+                    'prev' => $paginator->previousPageUrl(),
+                    'next' => $paginator->nextPageUrl(),
+                ],
+            ];
+        });
 
         return response()->json([
             'success' => true,
             'message' => 'Liste des agents récupérée avec succès.',
-            'data' => UtilisateurResource::collection($paginator),
-            'meta' => [
-                'current_page' => $paginator->currentPage(),
-                'per_page' => $paginator->perPage(),
-                'total' => $paginator->total(),
-                'last_page' => $paginator->lastPage(),
-                'from' => $paginator->firstItem(),
-                'to' => $paginator->lastItem(),
-            ],
-            'links' => [
-                'first' => $paginator->url(1),
-                'last' => $paginator->url($paginator->lastPage()),
-                'prev' => $paginator->previousPageUrl(),
-                'next' => $paginator->nextPageUrl(),
-            ],
+            'data' => $data['data'],
+            'meta' => $data['meta'],
+            'links' => $data['links'],
         ]);
     }
 
@@ -213,6 +232,7 @@ class UtilisateurController extends Controller
         }
 
         $utilisateur->load(['personne', 'centre']);
+        Cache::tags(['utilisateurs'])->flush();
 
         return response()->json([
             'success' => true,
@@ -246,6 +266,7 @@ class UtilisateurController extends Controller
         }
 
         $utilisateur->delete();
+        Cache::tags(['utilisateurs'])->flush();
 
         return response()->json([
             'success' => true,

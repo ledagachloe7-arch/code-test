@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\DossierResource;
 use App\Http\Resources\DocumentResource;
@@ -113,39 +114,45 @@ class DossierController extends Controller
     #[ScrambleResponse(200, 'Liste paginée des dossiers avec candidat, autoEcole, formation, documents, typeDemande, province, centre, data_categorie. 403 si agent centre et dossier d\'un autre centre.')]
     public function index(Request $request): AnonymousResourceCollection
     {
-        $query = Dossier::with(['candidat.personne', 'autoEcole', 'formation', 'documents', 'typeDemande', 'referentiel', 'province', 'centre', 'openedByUser.personne']);
+        $authUser = AuthHelper::getAuthenticatedUser($request);
+        $userId = $authUser ? $authUser->id : 'guest';
+        $cacheKey = "dossiers:index:{$userId}:" . md5(json_encode($request->all()));
 
-        if ($request->has('candidat_id')) {
-            $query->where('candidat_id', $request->candidat_id);
-        }
+        $dossiers = Cache::tags(['dossiers'])->remember($cacheKey, 600, function () use ($request) {
+            $query = Dossier::with(['candidat.personne', 'autoEcole', 'formation', 'documents', 'typeDemande', 'referentiel', 'province', 'centre', 'openedByUser.personne']);
 
-        if ($request->has('auto_ecole_id')) {
-            $query->where('auto_ecole_id', $request->auto_ecole_id);
-        }
+            if ($request->has('candidat_id')) {
+                $query->where('candidat_id', $request->candidat_id);
+            }
 
-        if ($request->has('statut')) {
-            $query->where('statut', $request->statut);
-        }
+            if ($request->has('auto_ecole_id')) {
+                $query->where('auto_ecole_id', $request->auto_ecole_id);
+            }
 
-        if ($request->has('expired')) {
-            $query->where('expired', filter_var($request->expired, FILTER_VALIDATE_BOOLEAN));
-        }
+            if ($request->has('statut')) {
+                $query->where('statut', $request->statut);
+            }
 
-        if ($request->has('suspended')) {
-            $query->where('suspended', filter_var($request->suspended, FILTER_VALIDATE_BOOLEAN));
-        }
+            if ($request->has('expired')) {
+                $query->where('expired', filter_var($request->expired, FILTER_VALIDATE_BOOLEAN));
+            }
 
-        if ($request->has('province_id')) {
-            $query->where('province_id', $request->province_id);
-        }
+            if ($request->has('suspended')) {
+                $query->where('suspended', filter_var($request->suspended, FILTER_VALIDATE_BOOLEAN));
+            }
 
-        if ($request->has('centre_id')) {
-            $query->where('centre_id', $request->centre_id);
-        }
+            if ($request->has('province_id')) {
+                $query->where('province_id', $request->province_id);
+            }
 
-        CentreScopeHelper::applyCentreScopeToDossiersQuery($query);
+            if ($request->has('centre_id')) {
+                $query->where('centre_id', $request->centre_id);
+            }
 
-        $dossiers = $query->latest()->paginate($request->get('per_page', 15));
+            CentreScopeHelper::applyCentreScopeToDossiersQuery($query);
+
+            return $query->latest()->paginate($request->get('per_page', 15));
+        });
 
         return DossierResource::collection($dossiers);
     }
@@ -391,6 +398,7 @@ class DossierController extends Controller
         }
 
         $dossier->update(['statut' => 'CARTE_DISPONIBLE_AU_CENTRE']);
+        Cache::tags(['dossiers'])->flush();
         $dossier->refresh()->load(['candidat.personne', 'autoEcole', 'formation', 'province', 'centre']);
 
         Log::info('[SMS] Carte disponible notifiée', ['dossier_id' => $dossier->id]);
@@ -444,6 +452,7 @@ class DossierController extends Controller
         }
 
         $dossier->update(['statut' => 'CARTE_REMIS_AU_CANDIDAT']);
+        Cache::tags(['dossiers'])->flush();
         $dossier->refresh()->load(['candidat.personne', 'autoEcole', 'formation', 'province', 'centre']);
 
         Log::info('Carte remise au candidat confirmée', ['dossier_id' => $dossier->id]);
@@ -564,6 +573,7 @@ class DossierController extends Controller
             }
 
             DB::commit();
+            Cache::tags(['dossiers'])->flush();
 
             Log::info('Dossier créé', ['dossier_id' => $dossier->id]);
             // modification du dossier
@@ -616,7 +626,9 @@ class DossierController extends Controller
     public function show(string $id): JsonResponse
     {
         try {
-            $dossier = Dossier::with(['candidat.personne', 'autoEcole', 'formation', 'documents', 'province', 'centre', 'openedByUser.personne'])->findOrFail($id);
+            $dossier = Cache::tags(['dossiers'])->remember("dossiers:id:{$id}", 600, function () use ($id) {
+                return Dossier::with(['candidat.personne', 'autoEcole', 'formation', 'documents', 'province', 'centre', 'openedByUser.personne'])->findOrFail($id);
+            });
 
             $forbidden = CentreScopeHelper::ensureAgentCanAccessDossier($dossier);
             if ($forbidden) {
@@ -690,6 +702,7 @@ class DossierController extends Controller
             $dossier->update($validated);
 
             DB::commit();
+            Cache::tags(['dossiers'])->flush();
 
             // SMS attente de paiement : envoi synchrone via Airtel (même config que création de compte), sans queue/cron
             if ($request->statut === 'EN_ATTENTE_PAIEMENT') {
@@ -763,6 +776,7 @@ class DossierController extends Controller
             $dossier->delete();
 
             DB::commit();
+            Cache::tags(['dossiers'])->flush();
 
             Log::info('Dossier supprimé', ['dossier_id' => $id]);
 
@@ -1005,6 +1019,7 @@ class DossierController extends Controller
             }
 
             DB::commit();
+            Cache::tags(['dossiers'])->flush();
 
             $message = $request->statut === 'valide'
                 ? 'Dossier validé avec succès !'
@@ -1376,6 +1391,10 @@ class DossierController extends Controller
                 $msg = substr($msg, 0, 157) . '...';
             }
             SendAirtelSmsJob::dispatch($phone, $msg, 'transfert_cneddt:' . $dossierId);
+        }
+
+        if ($successCount > 0) {
+            Cache::tags(['dossiers'])->flush();
         }
 
         return response()->json([

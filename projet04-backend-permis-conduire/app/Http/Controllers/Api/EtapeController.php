@@ -12,6 +12,7 @@ use Dedoc\Scramble\Attributes\Group;
 use Dedoc\Scramble\Attributes\QueryParameter;
 use Dedoc\Scramble\Attributes\Response as ScrambleResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 #[Group('Étapes', description: 'Gestion des étapes de workflow (circuit_id, code, libelle, statut, roles).')]
 class EtapeController extends Controller
@@ -30,19 +31,25 @@ class EtapeController extends Controller
     #[ScrambleResponse(200, 'Paginator Laravel : data (étapes + circuit), links, meta.')]
     public function index(Request $request)
     {
-        $query = Etape::with('circuit');
+        $cacheKey = 'etapes:' . md5(json_encode($request->all()));
+        $data = Cache::tags(['etapes'])->remember($cacheKey, 3600, function () use ($request) {
+            $query = Etape::with('circuit');
 
-        if ($request->filled('circuit_id')) {
-            $query->where('circuit_id', $request->query('circuit_id'));
-        }
+            if ($request->filled('circuit_id')) {
+                $query->where('circuit_id', $request->query('circuit_id'));
+            }
 
-        return response()->json($query->paginate($this->perPage($request)), 200);
+            return $query->paginate($this->perPage($request));
+        });
+
+        return response()->json($data, 200);
     }
 
     /** Crée une étape. Body validé par StoreEtapeRequest. Retourne l\'étape créée (201). */
     public function store(StoreEtapeRequest $request)
     {
         $etape = Etape::create($request->validated());
+        Cache::tags(['etapes'])->flush();
         return response()->json($etape, 201);
     }
 
@@ -56,12 +63,14 @@ class EtapeController extends Controller
     public function update(UpdateEtapeRequest $request, Etape $etape)
     {
         $etape->update($request->validated());
+        Cache::tags(['etapes'])->flush();
         return $etape->load('etapes');
     }
 
     public function destroy(Etape $etape)
     {
         $etape->delete();
+        Cache::tags(['etapes'])->flush();
         return response()->json(['message' => 'Etape supprimée']);
     }
 

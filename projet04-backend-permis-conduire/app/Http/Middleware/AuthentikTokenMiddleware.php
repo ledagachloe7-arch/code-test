@@ -6,6 +6,7 @@ use App\Models\Utilisateur;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -23,31 +24,45 @@ class AuthentikTokenMiddleware
             ], 401);
         }
 
-        // 2. Vérifier le jeton Sanctum en base de données.
-        $accessToken = PersonalAccessToken::findToken($plainTextToken);
+        // 2. Vérifier le jeton Sanctum en base de données (avec cache Redis pour éliminer 3 requêtes réseau par appel HTTP)
+        $tokenHash = hash('sha256', $plainTextToken);
+        $cachedAuth = Cache::tags(['auth_tokens'])->remember("auth:token:{$tokenHash}", 600, function () use ($plainTextToken) {
+            $accessToken = PersonalAccessToken::findToken($plainTextToken);
 
-        if (!$accessToken) {
+            if (!$accessToken) {
+                return null;
+            }
+
+            $user = $accessToken->tokenable;
+
+            if (!$user instanceof Utilisateur) {
+                return null;
+            }
+
+            $user->loadMissing('personne');
+
+            return [
+                'accessToken' => $accessToken,
+                'user' => $user,
+            ];
+        });
+
+        if (!$cachedAuth) {
             return response()->json([
                 'success' => false,
                 'message' => 'Token invalide ou révoqué. Veuillez vous reconnecter.',
             ], 401);
         }
 
-        // 3. Vérifier que le jeton appartient à un utilisateur de l'application.
-        $user = $accessToken->tokenable;
-
-        if (!$user instanceof Utilisateur) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Utilisateur non trouvé ou non autorisé.',
-            ], 401);
-        }
+        $accessToken = $cachedAuth['accessToken'];
+        $user = $cachedAuth['user'];
 
         // 4. Vérifier l'expiration individuelle du jeton.
         if (
             $accessToken->expires_at !== null &&
             $accessToken->expires_at->isPast()
         ) {
+            Cache::tags(['auth_tokens'])->forget("auth:token:{$tokenHash}");
             $accessToken->delete();
 
             return response()->json([
@@ -67,6 +82,7 @@ class AuthentikTokenMiddleware
                 now()->subMinutes((int) $expirationMinutes)
             )
         ) {
+            Cache::tags(['auth_tokens'])->forget("auth:token:{$tokenHash}");
             $accessToken->delete();
 
             return response()->json([
