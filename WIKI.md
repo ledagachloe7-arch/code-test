@@ -119,6 +119,12 @@ L'interface de connexion utilise la route API **`POST /api/auth/login-direct`**.
 
 ## 5. Journal des Modifications & Optimisations (Changelog)
 
+### [2026-11-02] - Renouvellement simplifié des catégories (branche `feat/renouvellement-simplifie`)
+* **Composant/Projet concerné** : frontend (`NouvelleDemandeePage`, nouveau `RenouvellementSimplifie`) et backend (`DossierController`, `CandidatController`).
+  * Besoin : renouveler les catégories d'un permis sans recréer de dossier complet ni repasser en biométrie.
+  * Solution : parcours dédié au type `RENOUVELLEMENT` (numéro → catégories → paiement → CNEDDT → short code → récépissé), avec enchaînement « digitaliser puis renouveler » pour les personnes non digitalisées, anti-doublon côté serveur et nouvelles dates calculées après paiement (2 ans si plus de 59 ans, sinon 5 ans).
+  * Détail complet (règles, endpoints, fichiers, tests, points ouverts) : **[RENOUVELLEMENT_SIMPLIFIE.md](RENOUVELLEMENT_SIMPLIFIE.md)**.
+
 ### [2026-11-01] - Implémentation du Cache Redis Global & Résolution des Latences
 
 * **Contexte & Diagnostic :**
