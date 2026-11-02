@@ -127,6 +127,22 @@ export function buildDossierTransfertEligibilitySnapshot(input: unknown): Record
   return snapshot;
 }
 
+export interface SendToCNEDDTResult {
+  /** Code caisse / dossier renvoyé par la CNEDDT (`data.cashier_short_code`), vide si absent. */
+  shortCode: string;
+  alreadyExistsAtBiometrie: boolean;
+}
+
+/** Lit `results[0].result.data` de l'enveloppe POST /dossiers/transfert (mode 1 dossier). */
+function extractTransfertResult(body: any): { shortCode: string; message: string } {
+  const cneddt = body?.results?.[0]?.result?.data;
+  const inner = cneddt?.data;
+  const shortCode = String(
+    inner?.cashier_short_code ?? inner?.cashierShortCode ?? inner?.shortcode ?? cneddt?.cashier_short_code ?? cneddt?.shortcode ?? ''
+  ).trim();
+  return { shortCode, message: String(cneddt?.message ?? '') };
+}
+
 /**
  * Envoie un dossier à la CNEDDT (biométrie).
  * Lance SendToCNEDDTError en cas d'échec.
@@ -135,7 +151,7 @@ export async function sendDossierToCNEDDT(
   dossierId: string,
   circuit?: CircuitSuivi | null,
   typeDemandeIdFallback?: string
-): Promise<void> {
+): Promise<SendToCNEDDTResult> {
   let dossierData: any = null;
   let payload: any = null;
 
@@ -193,6 +209,12 @@ export async function sendDossierToCNEDDT(
     } catch {
       // ignore
     }
+
+    const { shortCode, message } = extractTransfertResult(response.data);
+    return {
+      shortCode,
+      alreadyExistsAtBiometrie: /existe\s+d[ée]j[àa]|already\s+exists/i.test(message),
+    };
   } catch (err: any) {
     if (err instanceof SendToCNEDDTError) throw err;
     const msg = err?.response?.data?.message || err?.response?.data?.error || err?.message || 'Erreur lors de l\'envoi à la CNEDDT';

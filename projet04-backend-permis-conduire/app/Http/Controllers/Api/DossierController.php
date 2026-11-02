@@ -149,6 +149,14 @@ class DossierController extends Controller
                 $query->where('centre_id', $request->centre_id);
             }
 
+            // Renouvellement : retrouver un dossier de digitalisation par numéro de permis (ou d'origine), tirets ignorés
+            if ($request->filled('numero_permis')) {
+                $numero = strtoupper(str_replace('-', '', trim((string) $request->numero_permis)));
+                $query->where(fn($q) => $q
+                    ->whereRaw("UPPER(REPLACE(numero_permis, '-', '')) = ?", [$numero])
+                    ->orWhereRaw("UPPER(REPLACE(numero_origine_permis, '-', '')) = ?", [$numero]));
+            }
+
             CentreScopeHelper::applyCentreScopeToDossiersQuery($query);
 
             return $query->latest()->paginate($request->get('per_page', 15));
@@ -546,6 +554,20 @@ class DossierController extends Controller
 
             if (!empty($data['centre_id'])) {
                 $this->applyProvinceIdFromCentre($data, $data['centre_id']);
+            }
+
+            // Renouvellement : un seul dossier en cours par numéro de permis (évite les doublons
+            // en cas de double clic ou de reprise). On renvoie le dossier existant non encore transmis.
+            $renouvellementEnCours = $this->findRenouvellementEnCours($data);
+            if ($renouvellementEnCours) {
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => true,
+                    'existing' => true,
+                    'message' => 'Un renouvellement est déjà en cours pour ce permis : le dossier existant est repris.',
+                    'data' => new DossierResource($renouvellementEnCours->load(['candidat.personne', 'typeDemande', 'referentiel', 'province', 'centre'])),
+                ], 200);
             }
 
             $dossier = Dossier::create($data);
@@ -1325,14 +1347,24 @@ class DossierController extends Controller
                 continue;
             }
 
+            // Renouvellement déjà transmis : ne pas renvoyer au CNEDDT (éviterait un doublon de catégories).
+            if (($typeDemandeNamesById[$typeDemandeId] ?? null) === 'RENOUVELLEMENT'
+                && $dossier->statut === Dossier::STATUT_DOSSIER_ENVOYER) {
+                $skipped[] = ['dossier_id' => $dossierId, 'reason' => 'Renouvellement déjà transmis au CNEDDT.'];
+                continue;
+            }
+
             $payload = $this->buildPayloadForTransfert($dossier, $typeDemandeId, $typeDemandeNamesById);
             if ($payload === null) {
                 $skipped[] = ['dossier_id' => $dossierId, 'reason' => 'Impossible de construire le payload (données manquantes).'];
                 continue;
             }
 
-            $email = $singleEmailOverride ?? $dossier->candidat?->personne?->email;
-            $this->queueBiometrieEmailForDossier($dossier, $email);
+            // Renouvellement : pas de passage en biométrie, donc pas d'email de convocation biométrique.
+            if (($typeDemandeNamesById[$typeDemandeId] ?? null) !== 'RENOUVELLEMENT') {
+                $email = $singleEmailOverride ?? $dossier->candidat?->personne?->email;
+                $this->queueBiometrieEmailForDossier($dossier, $email);
+            }
 
             $toSend[] = ['dossier_id' => $dossierId, 'payload' => $payload];
         }
@@ -1383,7 +1415,9 @@ class DossierController extends Controller
                 Log::warning('[SMS] Transfert CNEDDT : pas de numéro pour le candidat', ['dossier_id' => $dossierId]);
                 continue;
             }
-            $msg = 'DGTT: Votre dossier a été transmis au CNEDDT pour la prise des empreintes biométriques.';
+            $msg = ($typeDemandeNamesById[$dossier->type_demande_id] ?? null) === 'RENOUVELLEMENT'
+                ? 'DGTT: Votre demande de renouvellement a été transmise au CNEDDT.'
+                : 'DGTT: Votre dossier a été transmis au CNEDDT pour la prise des empreintes biométriques.';
             if ($shortcode !== '') {
                 $msg .= ' Code dossier: ' . $shortcode . '.';
             }
@@ -1614,6 +1648,29 @@ class DossierController extends Controller
     /**
      * Code type permis pour le payload CNEDDT : formation (nouveau permis) ou référentiel / data_categorie (autres opérations).
      */
+    /**
+     * Dossier RENOUVELLEMENT non encore transmis au CNEDDT pour le même numéro de permis (tirets ignorés).
+     *
+     * @param  array<string, mixed>  $data  Données validées du dossier à créer
+     */
+    private function findRenouvellementEnCours(array $data): ?Dossier
+    {
+        $typeDemandeId = $data['type_demande_id'] ?? null;
+        $numeroPermis = strtoupper(str_replace('-', '', trim((string) ($data['numero_permis'] ?? ''))));
+        if (!$typeDemandeId || $numeroPermis === '') {
+            return null;
+        }
+        if (TypeDemande::where('id', $typeDemandeId)->value('name') !== 'RENOUVELLEMENT') {
+            return null;
+        }
+
+        return Dossier::where('type_demande_id', $typeDemandeId)
+            ->whereRaw("UPPER(REPLACE(numero_permis, '-', '')) = ?", [$numeroPermis])
+            ->where(fn($q) => $q->whereNull('statut')->orWhere('statut', '!=', Dossier::STATUT_DOSSIER_ENVOYER))
+            ->latest()
+            ->first();
+    }
+
     private function resolveTypePermisCodeForTransfert(Dossier $dossier, string $operationType): ?string
     {
         if ($operationType === 'NOUVEAUPERMIS') {

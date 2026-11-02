@@ -126,6 +126,25 @@ class CandidatController extends Controller
                     $q->where('nationalite', $request->nationalite)
                 )
 
+                // Renouvellement simplifié : retrouver le candidat à partir de l'identité du permis
+                ->when(
+                    $request->date_naissance,
+                    fn($q) =>
+                    $q->whereDate('date_naissance', $request->date_naissance)
+                )
+
+                ->when(
+                    $request->nom,
+                    fn($q) =>
+                    $q->whereHas('personne', fn($p) => $p->whereRaw('LOWER(nom) = ?', [mb_strtolower(trim($request->nom))]))
+                )
+
+                ->when(
+                    $request->prenom,
+                    fn($q) =>
+                    $q->whereHas('personne', fn($p) => $p->whereRaw('LOWER(prenom) = ?', [mb_strtolower(trim($request->prenom))]))
+                )
+
                 ->latest()
                 ->paginate($perPage);
         });

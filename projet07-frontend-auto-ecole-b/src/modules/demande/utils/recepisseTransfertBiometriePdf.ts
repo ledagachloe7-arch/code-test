@@ -352,3 +352,128 @@ export async function telechargerRecepisseTransfertBiometriePdf(input: DonneesRe
   const safeName = `recepisse-transmission-CNEDDT-${input.dossierId.slice(0, 8)}.pdf`;
   pdf.save(safeName);
 }
+
+export interface DonneesRecepisseRenouvellement {
+  dossierId: string;
+  numeroDossier?: string;
+  shortCode: string;
+  dateTransfert: Date;
+  numeroPermis: string;
+  personne: {
+    nom?: string;
+    prenom?: string;
+    date_naissance?: string;
+    lieu_naissance?: string;
+    nationalite?: string;
+    numero_piece?: string;
+    contact?: string;
+  };
+  categoriesRenouvelees: Array<{
+    categorie: string;
+    numero?: string;
+    lieu_obtention?: string;
+    date_obtention?: string;
+    date_validite?: string;
+  }>;
+}
+
+/**
+ * Récépissé de renouvellement (transmission CNEDDT sans biométrie) : short code + catégories renouvelées.
+ */
+export async function telechargerRecepisseRenouvellementPdf(input: DonneesRecepisseRenouvellement): Promise<void> {
+  const pdf = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
+  const pageW = pdf.internal.pageSize.getWidth();
+  const pageH = pdf.internal.pageSize.getHeight();
+  const marg = 12;
+  const contentW = pageW - marg * 2;
+
+  const mttDataUrl = await loadAssetDataUrl('/assets/img/mtt.png');
+  if (mttDataUrl) {
+    try {
+      const g = pdf as unknown as { GState?: new (v: { opacity: number }) => unknown; setGState?: (s: unknown) => void };
+      if (g.GState && g.setGState) g.setGState(new g.GState({ opacity: 0.06 }));
+      pdf.addImage(mttDataUrl, 'PNG', 53, 90, 104, 104);
+      if (g.GState && g.setGState) g.setGState(new g.GState({ opacity: 1 }));
+    } catch {
+      // ignore watermark rendering issues
+    }
+  }
+
+  pdf.setTextColor(0, 0, 0);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(9.6);
+  pdf.text('MINISTERE DES TRANSPORTS, DE LA MARINE MARCHANDE ET DE LA LOGISTIQUE', pageW / 2, 20.7, { align: 'center' });
+  pdf.setFontSize(13);
+  pdf.text('RECEPISSE DE RENOUVELLEMENT DE PERMIS DE CONDUIRE', pageW / 2, 31, { align: 'center' });
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(7.6);
+  pdf.text('Demande transmise au CNEDDT. A presenter a la caisse avec le code ci-dessous.', pageW / 2, 36, { align: 'center' });
+
+  // Short code mis en avant
+  const boxY = 42;
+  pdf.setDrawColor(0, 0, 0);
+  pdf.setLineWidth(0.5);
+  pdf.rect(marg, boxY, contentW, 22);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(8.5);
+  pdf.text('CODE DOSSIER (SHORT CODE)', pageW / 2, boxY + 6, { align: 'center' });
+  pdf.setFontSize(22);
+  pdf.text(input.shortCode || '-', pageW / 2, boxY + 17, { align: 'center' });
+
+  let y = boxY + 30;
+  const dateFmt = input.dateTransfert.toLocaleString('fr-FR', { dateStyle: 'long', timeStyle: 'short' });
+  y = drawSectionHeader(pdf, 'Dossier', marg, y, contentW);
+  y = drawFieldRow(pdf, 'Numero dossier', input.numeroDossier ?? '', marg, y, contentW, 40);
+  y = drawFieldRow(pdf, 'Reference', input.dossierId, marg, y, contentW, 40);
+  y = drawFieldRow(pdf, 'Date de transmission', dateFmt, marg, y, contentW, 40);
+  y = drawFieldRow(pdf, 'Numero de permis', input.numeroPermis, marg, y, contentW, 40);
+
+  y += 3;
+  const p = input.personne;
+  y = drawSectionHeader(pdf, 'Titulaire', marg, y, contentW);
+  y = drawFieldRow(pdf, 'Nom', p.nom ?? '', marg, y, contentW, 40);
+  y = drawFieldRow(pdf, 'Prenom', p.prenom ?? '', marg, y, contentW, 40);
+  y = drawFieldRow(pdf, 'Date de naissance', p.date_naissance ?? '', marg, y, contentW, 40);
+  y = drawFieldRow(pdf, 'Lieu de naissance', p.lieu_naissance ?? '', marg, y, contentW, 40);
+  y = drawFieldRow(pdf, 'Nationalite', p.nationalite ?? '', marg, y, contentW, 40);
+  y = drawFieldRow(pdf, 'Numero piece', p.numero_piece ?? '', marg, y, contentW, 40);
+  y = drawFieldRow(pdf, 'Contact', p.contact ?? '', marg, y, contentW, 40);
+
+  y += 3;
+  y = drawSectionHeader(pdf, 'Categories renouvelees', marg, y, contentW);
+  const cols = [
+    { label: 'Categorie', w: 0.14 },
+    { label: 'Numero', w: 0.26 },
+    { label: 'Lieu obtention', w: 0.24 },
+    { label: 'Obtention', w: 0.18 },
+    { label: 'Ancienne validite', w: 0.18 },
+  ];
+  const drawRow = (values: string[], bold: boolean) => {
+    pdf.setFont('helvetica', bold ? 'bold' : 'normal');
+    pdf.setFontSize(7.6);
+    let x = marg;
+    values.forEach((v, i) => {
+      pdf.text(v && v.trim() ? v : '-', x + 1, y + 3.4, { maxWidth: contentW * cols[i].w - 2 });
+      x += contentW * cols[i].w;
+    });
+    pdf.setLineWidth(0.15);
+    pdf.line(marg, y + 5, marg + contentW, y + 5);
+    y += 5.6;
+  };
+  drawRow(cols.map((c) => c.label), true);
+  input.categoriesRenouvelees.forEach((c) =>
+    drawRow([c.categorie, c.numero ?? '', c.lieu_obtention ?? '', c.date_obtention ?? '', c.date_validite ?? ''], false),
+  );
+
+  pdf.setFont('helvetica', 'italic');
+  pdf.setFontSize(7.5);
+  pdf.setTextColor(70, 70, 70);
+  pdf.text(
+    "Recepisse delivre a l'usager. Le code dossier lui a egalement ete envoye par SMS.",
+    marg,
+    pageH - 12,
+    { maxWidth: contentW },
+  );
+
+  pdf.save(`recepisse-renouvellement-${(input.shortCode || input.dossierId.slice(0, 8)).replace(/[^A-Za-z0-9_-]/g, '')}.pdf`);
+}

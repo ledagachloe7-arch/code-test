@@ -58,6 +58,7 @@ import {
   checkIsDuplicata,
   checkIsFicheEnregistre,
   checkIsNouveauPermis,
+  checkIsRenouvellement,
   extractCategorieFromNumeroPermis,
 } from '../forms/utils';
 import { getTypeDemandeDisplayName } from '../pages/UsagerDossierPage/utils';
@@ -392,7 +393,14 @@ const GestionDossierTable: React.FC<GestionDossierTableProps> = ({ refreshTrigge
 
   // Filtrer les dossiers côté client et appliquer la pagination
   useEffect(() => {
-    let filteredDossiers = [...allDossiers];
+    // Les renouvellements sont traités de bout en bout dans « Nouvelle demande » : on ne les liste pas ici.
+    let filteredDossiers = allDossiers.filter((dossier) => {
+      const typeName =
+        dossier.type_demande?.name ??
+        (dossier.type_demande_id ? typeDemandeCache.get(dossier.type_demande_id)?.name : undefined) ??
+        '';
+      return !checkIsRenouvellement(typeName);
+    });
 
     // Filtrer par recherche textuelle (nom, prénom, numéro candidat, référence)
     if (searchTerm && searchTerm.trim() !== '') {

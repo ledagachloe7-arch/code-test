@@ -219,6 +219,14 @@ export const checkIsDuplicata = (typeDemandeName: string): boolean => {
 };
 
 /**
+ * Vérifie si un type de demande est un "renouvellement".
+ */
+export const checkIsRenouvellement = (typeDemandeName: string): boolean => {
+  if (!typeDemandeName || typeof typeDemandeName !== 'string') return false;
+  return typeDemandeName.toLowerCase().includes('renouvel');
+};
+
+/**
  * Détecte le format du numéro de permis d'origine (numero_origine_permis) renvoyé par l'API :
  * - "op" (PERM) : uniquement des chiffres (ex: "80852")
  * - "standard" : structure type AAAA-P-C-NNNN avec ou sans tirets (ex: "20051C00014" ou "2005-1-C-00014")
