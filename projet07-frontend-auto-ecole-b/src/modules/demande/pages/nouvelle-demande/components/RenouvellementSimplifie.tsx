@@ -24,11 +24,12 @@ import axiosClient from '../../../../../shared/utils/axiosConfig';
 import { circuitSuiviService } from '../../../../reception/services/circuit-suivi.service';
 import { SendToCNEDDTError, sendDossierToCNEDDT } from '../../../../reception/services/sendToCNEDDT.service';
 import {
-  chargerDigitalisation,
+  chargerDossierAvecCategories,
   createCandidatPourRenouvellement,
   createDossierRenouvellement,
   findCandidatPourPermis,
   findDigitalisationParNumero,
+  findRenouvellementTransmisParNumero,
   demandeService,
   type CandidatRenouvellement,
   type DonneesDigitalisation,
@@ -83,6 +84,19 @@ function errorMessage(err: unknown, fallback: string): string {
   return ax?.response?.data?.message ?? ax?.message ?? fallback;
 }
 
+/** Remplace les dates par celles du dernier renouvellement transmis (même catégorie) : un permis déjà renouvelé apparaît valide. */
+async function avecDernierRenouvellement(liste: PermisApiData[], numero: string): Promise<PermisApiData[]> {
+  const renouvellement = await findRenouvellementTransmisParNumero(numero).catch(() => null);
+  if (!renouvellement) return liste;
+  const parCategorie = new Map(
+    renouvellement.categories.filter((c) => c.renouvele).map((c) => [String(c.categorie ?? '').toUpperCase(), c]),
+  );
+  return liste.map((p) => {
+    const r = parCategorie.get(String(p.categorie ?? '').toUpperCase());
+    return r ? { ...p, date_obtention: r.date_obtention, date_validite: r.date_validite, renouvele: true } : p;
+  });
+}
+
 async function fetchStatutEtCodePaiement(dossierId: string): Promise<{ statut: string; code: string }> {
   const res = await axiosClient.get(`/dossiers/${dossierId}`);
   const d = (res.data?.data ?? res.data) as Record<string, unknown>;
@@ -130,6 +144,13 @@ const RenouvellementSimplifie: React.FC<RenouvellementSimplifieProps> = ({
   const [dossier, setDossier] = useState<{ id: string; numero?: string } | null>(null);
   const [codePaiement, setCodePaiement] = useState('');
   const [shortCode, setShortCode] = useState('');
+  /** Catégories avec leurs nouvelles dates, calculées par le serveur après paiement (2 ans si > 59 ans, sinon 5 ans). */
+  const [categoriesRenouvelees, setCategoriesRenouvelees] = useState<PermisApiData[]>([]);
+
+  const rafraichirNouvellesDates = useCallback(async (dossierId: string) => {
+    const d = await chargerDossierAvecCategories(dossierId).catch(() => null);
+    if (d) setCategoriesRenouvelees(d.categories.filter((c) => c.renouvele));
+  }, []);
 
   const categoriesSelectionnees = useMemo(
     () => permisList.filter((p) => selection.includes(cleCategorie(p))),
@@ -153,6 +174,7 @@ const RenouvellementSimplifie: React.FC<RenouvellementSimplifieProps> = ({
     setDossier(null);
     setCodePaiement('');
     setShortCode('');
+    setCategoriesRenouvelees([]);
   }, []);
 
   /** Personne digitalisée via un dossier (fiche / duplicata) : identité, catégories et candidat viennent du dossier. */
@@ -171,7 +193,7 @@ const RenouvellementSimplifie: React.FC<RenouvellementSimplifieProps> = ({
     if (!dossierDigitalisationId) return;
     let cancelled = false;
     setBusy(true);
-    chargerDigitalisation(dossierDigitalisationId)
+    chargerDossierAvecCategories(dossierDigitalisationId)
       .then((dig) => {
         if (cancelled) return;
         if (!dig || dig.categories.length === 0) {
@@ -209,7 +231,7 @@ const RenouvellementSimplifie: React.FC<RenouvellementSimplifieProps> = ({
           return;
         }
         if (dig && dig.categories.length > 0) {
-          appliquerDigitalisation(dig);
+          appliquerDigitalisation({ ...dig, categories: await avecDernierRenouvellement(dig.categories, dig.numeroPermis) });
           return;
         }
         setNonDigitalise(true);
@@ -231,7 +253,10 @@ const RenouvellementSimplifie: React.FC<RenouvellementSimplifieProps> = ({
         const k = normalizeNumero(p.numero_permis);
         if (k && !parNumero.has(k)) parNumero.set(k, p);
       });
-      const liste = Array.from(parNumero.values());
+      const liste = await avecDernierRenouvellement(Array.from(parNumero.values()), String(trouve.numero_permis ?? numero));
+      if (liste.some((p) => p.renouvele)) {
+        setInfo('Ce permis a déjà été renouvelé : les dates affichées sont celles du dernier renouvellement.');
+      }
       setPermisList(liste);
       setPrincipal(trouve);
       // Par défaut : les catégories expirées sont à renouveler
@@ -307,7 +332,9 @@ const RenouvellementSimplifie: React.FC<RenouvellementSimplifieProps> = ({
       const res = await axiosClient.get(`/dossiers/${dossier.id}/check-paiement`, { params: { code: codePaiement.trim() } });
       const body = res.data as { data?: { paid?: boolean; message?: string }; paid?: boolean; message?: string };
       if (body?.data?.paid ?? body?.paid) {
-        setInfo('Paiement vérifié.');
+        // Le serveur vient de calculer les nouvelles dates de validité
+        await rafraichirNouvellesDates(dossier.id);
+        setInfo('Paiement vérifié : nouvelles dates de validité calculées.');
         setEtape('cneddt');
       } else {
         setError(body?.data?.message ?? body?.message ?? 'Paiement en attente de validation.');
@@ -317,7 +344,7 @@ const RenouvellementSimplifie: React.FC<RenouvellementSimplifieProps> = ({
     } finally {
       setBusy(false);
     }
-  }, [dossier, codePaiement]);
+  }, [dossier, codePaiement, rafraichirNouvellesDates]);
 
   // ── 4. Transmission CNEDDT (pas de biométrie) → short code ──────────────────
   const handleEnvoyerCNEDDT = useCallback(async () => {
@@ -334,13 +361,15 @@ const RenouvellementSimplifie: React.FC<RenouvellementSimplifieProps> = ({
         // ignore
       }
       if (!code) setInfo("Demande transmise au CNEDDT, mais aucun short code n'a été renvoyé.");
+      // Dates éventuellement calculées à l'envoi (paiement contourné)
+      await rafraichirNouvellesDates(dossier.id);
       setEtape('termine');
     } catch (err) {
       setError(errorMessage(err, "Erreur lors de l'envoi au CNEDDT."));
     } finally {
       setBusy(false);
     }
-  }, [dossier, typeDemandeId]);
+  }, [dossier, typeDemandeId, rafraichirNouvellesDates]);
 
   const handleImprimer = useCallback(async () => {
     if (!dossier || !principal) return;
@@ -359,15 +388,38 @@ const RenouvellementSimplifie: React.FC<RenouvellementSimplifieProps> = ({
         numero_piece: String(principal.numero_identite ?? nouveauCandidat.numero_piece ?? ''),
         contact: candidat?.personne?.contact ?? nouveauCandidat.telephone,
       },
-      categoriesRenouvelees: categoriesSelectionnees.map((p) => ({
+      categoriesRenouvelees: (categoriesRenouvelees.length ? categoriesRenouvelees : categoriesSelectionnees).map((p) => ({
         categorie: String(p.categorie ?? ''),
         numero: String(p.numero_permis ?? ''),
-        lieu_obtention: String(p.lieu_obtention ?? ''),
-        date_obtention: fmtDate(p.date_obtention),
-        date_validite: fmtDate(p.date_validite),
+        valable_du: p.renouvele ? fmtDate(p.date_obtention) : '',
+        jusqu_au: p.renouvele ? fmtDate(p.date_validite) : '',
+        ancienne_validite: p.renouvele ? fmtDate(p.ancienne_validite) : fmtDate(p.date_validite),
       })),
     });
-  }, [dossier, principal, shortCode, candidat, nouveauCandidat, categoriesSelectionnees, numeroDossier]);
+  }, [dossier, principal, shortCode, candidat, nouveauCandidat, categoriesSelectionnees, categoriesRenouvelees, numeroDossier]);
+
+  const tableauNouvellesDates = categoriesRenouvelees.length > 0 && (
+    <Table size="small" sx={{ mb: 2 }}>
+      <TableHead>
+        <TableRow>
+          <TableCell>Catégorie</TableCell>
+          <TableCell>Ancienne validité</TableCell>
+          <TableCell>Nouvelle validité</TableCell>
+          <TableCell>Durée</TableCell>
+        </TableRow>
+      </TableHead>
+      <TableBody>
+        {categoriesRenouvelees.map((p) => (
+          <TableRow key={cleCategorie(p)}>
+            <TableCell><strong>{p.categorie || '-'}</strong></TableCell>
+            <TableCell>{fmtDate(p.ancienne_validite) || '-'}</TableCell>
+            <TableCell>{fmtDate(p.date_obtention)} → <strong>{fmtDate(p.date_validite)}</strong></TableCell>
+            <TableCell>{typeof p.duree_ans === 'number' ? `${p.duree_ans} ans` : '-'}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
 
   const statutChip = (p: PermisApiData) => {
     const exp = isExpire(p);
@@ -597,6 +649,7 @@ const RenouvellementSimplifie: React.FC<RenouvellementSimplifieProps> = ({
       {(etape === 'cneddt' || etape === 'termine') && (
         <Paper variant="outlined" sx={{ p: 2 }}>
           <Typography variant="subtitle1" fontWeight={700} gutterBottom>Transmission au CNEDDT</Typography>
+          {tableauNouvellesDates}
           {etape === 'cneddt' ? (
             <Button variant="contained" onClick={() => void handleEnvoyerCNEDDT()} disabled={busy}>
               {busy ? <CircularProgress size={20} color="inherit" /> : 'Envoyer à la CNEDDT'}

@@ -1354,6 +1354,9 @@ class DossierController extends Controller
                 continue;
             }
 
+            // Filet de sécurité : nouvelles dates calculées si elles ne l'ont pas été à la vérification du paiement.
+            $this->appliquerNouvellesDatesRenouvellement($dossier);
+
             $payload = $this->buildPayloadForTransfert($dossier, $typeDemandeId, $typeDemandeNamesById);
             if ($payload === null) {
                 $skipped[] = ['dossier_id' => $dossierId, 'reason' => 'Impossible de construire le payload (données manquantes).'];
@@ -1671,6 +1674,53 @@ class DossierController extends Controller
             ->first();
     }
 
+    /**
+     * Renouvellement : nouvelles dates de validité des catégories, à partir du jour du paiement.
+     * Durée : 2 ans si le titulaire a plus de 59 ans, 5 ans sinon.
+     * Idempotent : une catégorie déjà marquée `renouvele` n'est pas recalculée (ancienne validité conservée).
+     */
+    private function appliquerNouvellesDatesRenouvellement(Dossier $dossier): void
+    {
+        if (empty($dossier->data_categorie) || !is_array($dossier->data_categorie)) {
+            return;
+        }
+        if (TypeDemande::where('id', $dossier->type_demande_id)->value('name') !== 'RENOUVELLEMENT') {
+            return;
+        }
+
+        $naissance = $dossier->candidat?->date_naissance;
+        $dureeAns = ($naissance && $naissance->age > 59) ? 2 : 5;
+        $debut = now()->startOfDay();
+        $fin = $debut->copy()->addYears($dureeAns);
+
+        $modifie = false;
+        $lignes = [];
+        foreach ($dossier->data_categorie as $cat) {
+            $ligne = is_string($cat) ? json_decode($cat, true) : $cat;
+            if (!is_array($ligne) || !empty($ligne['renouvele'])) {
+                $lignes[] = $cat;
+                continue;
+            }
+            $ligne['ancienne_validite'] = $ligne['jusqu_au'] ?? null;
+            $ligne['valable_du'] = $debut->toDateString();
+            $ligne['jusqu_au'] = $fin->toDateString();
+            $ligne['duree_ans'] = $dureeAns;
+            $ligne['renouvele'] = true;
+            $lignes[] = is_string($cat) ? json_encode($ligne, JSON_UNESCAPED_UNICODE) : $ligne;
+            $modifie = true;
+        }
+
+        if ($modifie) {
+            $dossier->forceFill(['data_categorie' => $lignes, 'date_expiration' => $fin->toDateString()])->save();
+            Cache::tags(['dossiers'])->flush();
+            Log::info('Renouvellement : nouvelles dates appliquées', [
+                'dossier_id' => $dossier->id,
+                'duree_ans' => $dureeAns,
+                'jusqu_au' => $fin->toDateString(),
+            ]);
+        }
+    }
+
     private function resolveTypePermisCodeForTransfert(Dossier $dossier, string $operationType): ?string
     {
         if ($operationType === 'NOUVEAUPERMIS') {
@@ -1881,6 +1931,10 @@ class DossierController extends Controller
         }
 
         $result = $this->paynalaService->checkAndProcessPaymentForDossier($dossier->load('candidat.personne'));
+
+        if (($result['paid'] ?? false) === true) {
+            $this->appliquerNouvellesDatesRenouvellement($dossier->fresh(['candidat']));
+        }
 
         return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
     }

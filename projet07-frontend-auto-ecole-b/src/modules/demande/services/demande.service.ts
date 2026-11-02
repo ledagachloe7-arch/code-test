@@ -796,6 +796,10 @@ function donneesDepuisDossierDigitalisation(d: Record<string, unknown>): Donnees
     lieu_obtention: String(c.ville ?? '').trim(),
     date_obtention: fmtDateOnly(String(c.valable_du ?? '')),
     date_validite: fmtDateOnly(String(c.jusqu_au ?? '')),
+    // Renseignés par le serveur après paiement d'un renouvellement
+    renouvele: c.renouvele === true,
+    ancienne_validite: fmtDateOnly(String(c.ancienne_validite ?? '')),
+    duree_ans: typeof c.duree_ans === 'number' ? c.duree_ans : undefined,
   }));
   const principal: PermisApiData = categories[0]
     ? { ...categories[0], numero_permis: numeroPermis || categories[0].numero_permis }
@@ -813,22 +817,30 @@ function donneesDepuisDossierDigitalisation(d: Record<string, unknown>): Donnees
   };
 }
 
-/** Charge un dossier de digitalisation par son id (enchaînement « digitaliser puis renouveler »). */
-export async function chargerDigitalisation(dossierId: string): Promise<DonneesDigitalisation | null> {
+/** Charge un dossier (digitalisation ou renouvellement) avec son titulaire et ses catégories. */
+export async function chargerDossierAvecCategories(dossierId: string): Promise<DonneesDigitalisation | null> {
   const res = await axiosClient.get(`/dossiers/${dossierId}`, { params: { include: 'candidat.personne' } });
   const d = (res.data?.data ?? res.data) as Record<string, unknown> | null;
   return d ? donneesDepuisDossierDigitalisation(d) : null;
 }
 
+/** Dossiers portant ce numéro de permis (ou d'origine) dont le type est dans `types`, du plus récent au plus ancien. */
+async function findDossiersParNumero(numero: string, types: readonly string[]): Promise<DonneesDigitalisation[]> {
+  const res = await axiosClient.get('/dossiers', { params: { numero_permis: numero.replace(/-/g, '').trim(), per_page: 20 } });
+  return extractPaginatedList<Record<string, unknown>>(res.data)
+    .filter((d) => types.includes(normalizeDemandeKey((d.type_demande as { name?: string } | undefined)?.name)))
+    .map(donneesDepuisDossierDigitalisation)
+    .filter((x): x is DonneesDigitalisation => !!x);
+}
+
 /** Dernier dossier de digitalisation (fiche / duplicata) portant ce numéro de permis ou d'origine. */
 export async function findDigitalisationParNumero(numero: string): Promise<DonneesDigitalisation | null> {
-  const res = await axiosClient.get('/dossiers', { params: { numero_permis: numero.replace(/-/g, '').trim(), per_page: 20 } });
-  const dossiers = extractPaginatedList<Record<string, unknown>>(res.data);
-  const digitalisation = dossiers.find((d) => {
-    const type = d.type_demande as { name?: string } | undefined;
-    return (TYPES_DIGITALISATION as readonly string[]).includes(normalizeDemandeKey(type?.name));
-  });
-  return digitalisation ? donneesDepuisDossierDigitalisation(digitalisation) : null;
+  return (await findDossiersParNumero(numero, TYPES_DIGITALISATION))[0] ?? null;
+}
+
+/** Dernier renouvellement transmis au CNEDDT pour ce permis : ses catégories portent les nouvelles dates. */
+export async function findRenouvellementTransmisParNumero(numero: string): Promise<DonneesDigitalisation | null> {
+  return (await findDossiersParNumero(numero, ['RENOUVELLEMENT'])).find((d) => d.transmis) ?? null;
 }
 
 export const demandeService = {

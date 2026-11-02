@@ -371,9 +371,10 @@ export interface DonneesRecepisseRenouvellement {
   categoriesRenouvelees: Array<{
     categorie: string;
     numero?: string;
-    lieu_obtention?: string;
-    date_obtention?: string;
-    date_validite?: string;
+    /** Nouvelle période de validité (calculée après paiement) */
+    valable_du?: string;
+    jusqu_au?: string;
+    ancienne_validite?: string;
   }>;
 }
 
@@ -444,9 +445,9 @@ export async function telechargerRecepisseRenouvellementPdf(input: DonneesRecepi
   const cols = [
     { label: 'Categorie', w: 0.14 },
     { label: 'Numero', w: 0.26 },
-    { label: 'Lieu obtention', w: 0.24 },
-    { label: 'Obtention', w: 0.18 },
-    { label: 'Ancienne validite', w: 0.18 },
+    { label: 'Ancienne validite', w: 0.2 },
+    { label: 'Valable du', w: 0.2 },
+    { label: "Jusqu'au", w: 0.2 },
   ];
   const drawRow = (values: string[], bold: boolean) => {
     pdf.setFont('helvetica', bold ? 'bold' : 'normal');
@@ -462,7 +463,7 @@ export async function telechargerRecepisseRenouvellementPdf(input: DonneesRecepi
   };
   drawRow(cols.map((c) => c.label), true);
   input.categoriesRenouvelees.forEach((c) =>
-    drawRow([c.categorie, c.numero ?? '', c.lieu_obtention ?? '', c.date_obtention ?? '', c.date_validite ?? ''], false),
+    drawRow([c.categorie, c.numero ?? '', c.ancienne_validite ?? '', c.valable_du ?? '', c.jusqu_au ?? ''], false),
   );
 
   pdf.setFont('helvetica', 'italic');
