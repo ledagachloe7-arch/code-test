@@ -69,6 +69,15 @@ function fmtDate(value: unknown): string {
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : '';
 }
 
+/** Catégories renouvelables pour le moment (règle DGTT) ; les autres sont affichées mais non sélectionnables. */
+const CATEGORIES_RENOUVELABLES = ['C', 'D'];
+
+const estRenouvelable = (p: PermisApiData) => CATEGORIES_RENOUVELABLES.includes(String(p.categorie ?? '').toUpperCase().trim());
+
+/** Sélection par défaut : catégories renouvelables expirées. */
+const selectionParDefaut = (liste: PermisApiData[]) =>
+  liste.filter((p) => estRenouvelable(p) && isExpire(p) === true).map(cleCategorie);
+
 function isExpire(p: PermisApiData): boolean | null {
   const validite = fmtDate(p.date_validite);
   if (!validite) return null;
@@ -153,7 +162,7 @@ const RenouvellementSimplifie: React.FC<RenouvellementSimplifieProps> = ({
   }, []);
 
   const categoriesSelectionnees = useMemo(
-    () => permisList.filter((p) => selection.includes(cleCategorie(p))),
+    () => permisList.filter((p) => estRenouvelable(p) && selection.includes(cleCategorie(p))),
     [permisList, selection],
   );
 
@@ -183,8 +192,7 @@ const RenouvellementSimplifie: React.FC<RenouvellementSimplifieProps> = ({
     setPrincipal(dig.principal);
     setNumeroDossier(dig.numeroPermis);
     setCandidat(dig.candidat);
-    const expirees = dig.categories.filter((p) => isExpire(p) === true).map(cleCategorie);
-    setSelection(expirees.length ? expirees : dig.categories.map(cleCategorie));
+    setSelection(selectionParDefaut(dig.categories));
     setEtape('verification');
   }, []);
 
@@ -259,9 +267,8 @@ const RenouvellementSimplifie: React.FC<RenouvellementSimplifieProps> = ({
       }
       setPermisList(liste);
       setPrincipal(trouve);
-      // Par défaut : les catégories expirées sont à renouveler
-      const expirees = liste.filter((p) => isExpire(p) === true).map(cleCategorie);
-      setSelection(expirees.length ? expirees : [cleCategorie(trouve)]);
+      // Par défaut : les catégories C / D expirées sont à renouveler
+      setSelection(selectionParDefaut(liste));
 
       const existant = await findCandidatPourPermis(trouve).catch(() => null);
       setCandidat(existant);
@@ -535,6 +542,10 @@ const RenouvellementSimplifie: React.FC<RenouvellementSimplifieProps> = ({
           )}
 
           {onglet === 1 && (
+            <>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              Pour le moment, seules les catégories {CATEGORIES_RENOUVELABLES.join(' et ')} peuvent être renouvelées.
+            </Typography>
             <Table size="small">
               <TableHead>
                 <TableRow>
@@ -548,20 +559,24 @@ const RenouvellementSimplifie: React.FC<RenouvellementSimplifieProps> = ({
               <TableBody>
                 {permisList.map((p) => {
                   const k = cleCategorie(p);
+                  const selectionnable = !verrouille && estRenouvelable(p);
                   return (
-                    <TableRow key={k} hover onClick={() => !verrouille && toggleCategorie(k)} sx={{ cursor: verrouille ? 'default' : 'pointer' }}>
+                    <TableRow key={k} hover={selectionnable} onClick={() => selectionnable && toggleCategorie(k)} sx={{ cursor: selectionnable ? 'pointer' : 'default', opacity: estRenouvelable(p) ? 1 : 0.6 }}>
                       <TableCell padding="checkbox">
-                        <Checkbox checked={selection.includes(k)} disabled={verrouille} />
+                        <Checkbox checked={estRenouvelable(p) && selection.includes(k)} disabled={!selectionnable} />
                       </TableCell>
                       <TableCell><strong>{p.categorie || '-'}</strong></TableCell>
                       <TableCell>{p.numero_permis}</TableCell>
                       <TableCell>{fmtDate(p.date_validite) || '-'}</TableCell>
-                      <TableCell>{statutChip(p)}</TableCell>
+                      <TableCell>
+                        {estRenouvelable(p) ? statutChip(p) : <Chip size="small" variant="outlined" label="Non renouvelable" />}
+                      </TableCell>
                     </TableRow>
                   );
                 })}
               </TableBody>
             </Table>
+            </>
           )}
 
           {/* Candidat : existant ou complément minimal pour créer le compte */}
@@ -615,7 +630,11 @@ const RenouvellementSimplifie: React.FC<RenouvellementSimplifieProps> = ({
                 </Button>
               </Stack>
               {categoriesSelectionnees.length === 0 && (
-                <Typography variant="caption" color="error">Sélectionnez au moins une catégorie à renouveler.</Typography>
+                <Typography variant="caption" color="error">
+                  {permisList.some(estRenouvelable)
+                    ? 'Sélectionnez au moins une catégorie à renouveler.'
+                    : `Aucune catégorie ${CATEGORIES_RENOUVELABLES.join(' ou ')} sur ce permis : rien à renouveler pour le moment.`}
+                </Typography>
               )}
             </Box>
           )}

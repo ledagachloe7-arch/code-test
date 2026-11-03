@@ -29,7 +29,7 @@ Le bouton « Créer un dossier » de *Gestion dossier* ouvre l'ancien parcours p
 |---|---|---|---|
 | 1 | Numéro de permis → **Rechercher** | Recherche dans le registre et l'historique (`/change-permis`), puis toutes les catégories du titulaire via son identité. À défaut, recherche dans les dossiers de digitalisation transmis. | — |
 | 2 | Onglet **Informations** | Identité + toutes les catégories avec un badge **Expirée / Valide** | — |
-| 3 | Onglet **Catégories à renouveler** | Cases à cocher (les catégories expirées sont cochées d'avance). Pas d'ajout ni de modification de catégorie. | — |
+| 3 | Onglet **Catégories à renouveler** | Cases à cocher : **seules C et D sont sélectionnables** (voir §3.0), les C / D expirées sont cochées d'avance. Les autres catégories sont affichées « Non renouvelable ». Pas d'ajout ni de modification de catégorie. | — |
 | 4 | Titulaire | **Candidat existant** retrouvé par nom + prénom + date de naissance. Sinon, mini-formulaire : téléphone (obligatoire), genre, type et n° de pièce, email facultatif. | — |
 | 5 | **Valider et passer au paiement** | Création du dossier (ou reprise de celui en cours, voir §3.1) et génération du code de paiement | `en_attente` → `EN_ATTENTE_PAIEMENT` |
 | 6 | **Vérifier le paiement** | Vérification Paynala, puis **calcul automatique des nouvelles dates** (voir §3.2) et affichage du tableau ancienne / nouvelle validité | inchangé |
@@ -55,6 +55,14 @@ Si la personne revient un autre jour, l'agent tape simplement le numéro dans Re
 ---
 
 ## 3. Règles métier
+
+### 3.0 Catégories renouvelables
+
+Pour le moment, **seules les catégories C et D peuvent être renouvelées**, pour tous les titulaires.
+
+- Écran : toutes les catégories sont affichées dans *Informations* ; dans *Catégories à renouveler*, A, B, E… sont grisées avec le badge « Non renouvelable ». Si le titulaire n'a ni C ni D : « Aucune catégorie C ou D sur ce permis : rien à renouveler pour le moment. »
+- Serveur : un `POST /dossiers` de renouvellement contenant une autre classe est refusé (**422** « Seules les catégories C et D peuvent être renouvelées (refusé : B) »). Le calcul des nouvelles dates ignore aussi toute autre classe.
+- Pour changer la liste : `CATEGORIES_RENOUVELABLES` dans `DossierController.php` **et** dans `RenouvellementSimplifie.tsx`.
 
 ### 3.1 Anti-doublon
 
@@ -110,11 +118,12 @@ Les dossiers `RENOUVELLEMENT` **ne sont plus listés** dans *Gestion dossier* : 
 | Méthode / endpoint | Changement |
 |---|---|
 | `index` — `GET /api/dossiers` | Nouveau filtre optionnel `numero_permis` : compare `numero_permis` **ou** `numero_origine_permis`, en majuscules et sans tirets. |
-| `store` — `POST /api/dossiers` | Pour un `RENOUVELLEMENT`, appelle `findRenouvellementEnCours()`. S'il existe un renouvellement non transmis pour le même numéro, renvoie **200** `{ success: true, existing: true, data: <dossier> }` sans rien créer. |
+| `store` — `POST /api/dossiers` | Pour un `RENOUVELLEMENT` : refus **422** si une catégorie n'est pas C ou D (`categoriesNonRenouvelables()`, §3.0). Puis appelle `findRenouvellementEnCours()`. S'il existe un renouvellement non transmis pour le même numéro, renvoie **200** `{ success: true, existing: true, data: <dossier> }` sans rien créer. |
 | `checkPaiement` — `GET /api/dossiers/{id}/check-paiement` | Si `paid === true`, appelle `appliquerNouvellesDatesRenouvellement()`. |
 | `transfert` — `POST /api/dossiers/transfert` | Pour un `RENOUVELLEMENT` : refus s'il est déjà `DOSSIER ENVOYER` ; application des nouvelles dates si ce n'est pas encore fait ; pas d'e-mail biométrie ; SMS adapté. |
+| `CATEGORIES_RENOUVELABLES` *(nouvelle constante)* / `categoriesNonRenouvelables()` *(nouveau, privé)* | Liste `['C', 'D']` et classes refusées d'un renouvellement. |
 | `findRenouvellementEnCours()` *(nouveau, privé)* | Dernier dossier `RENOUVELLEMENT` du même numéro de permis dont le statut est différent de `DOSSIER ENVOYER`. |
-| `appliquerNouvellesDatesRenouvellement()` *(nouveau, privé)* | Règle du §3.2 ; met à jour `data_categorie` et `date_expiration`, vide le cache `dossiers`, écrit un log `Renouvellement : nouvelles dates appliquées`. |
+| `appliquerNouvellesDatesRenouvellement()` *(nouveau, privé)* | Règle du §3.2, uniquement sur les classes C / D ; met à jour `data_categorie` et `date_expiration`, vide le cache `dossiers`, écrit un log `Renouvellement : nouvelles dates appliquées`. |
 
 **Aucune migration** : tout passe par des colonnes existantes.
 
@@ -170,17 +179,17 @@ Compte : `admin@permis.local` / `123456`. Page : `http://localhost:3000/eleves/n
 
 | Cas | Numéro à saisir | Titulaire | Attendu |
 |---|---|---|---|
-| B expirée, A valide | `20151B77001` | MOUSSAVOU Alain, 41 ans | B cochée seule, **5 ans** |
-| Plus de 59 ans, 2 catégories expirées | `20099B77002` | NZE Bernadette, 68 ans | B et C cochées, **2 ans** |
-| Limite : 59 ans | `20129B77003` | ONDO Martin, 59 ans | **5 ans** |
-| Limite : 60 ans | `20113B77004` | ESSONO Rose, 60 ans | **2 ans** |
-| Tout est valide | `20221B77005` | MBA Serge, 36 ans | Rien d'expiré, badges « Valide » |
-| 5 catégories expirées | `20084C77006` | KOUMBA Lucie, 48 ans | A à E cochées, **5 ans** |
-| Déjà renouvelé deux fois (`date_renou1/2`) | `19986B77007` | NDONG Félix, 54 ans | B expirée, **5 ans** |
+| B expirée, A valide : rien de renouvelable | `20151B77001` | MOUSSAVOU Alain, 41 ans | Message « Aucune catégorie C ou D », bouton désactivé |
+| Plus de 59 ans, B et C expirées | `20099B77002` | NZE Bernadette, 68 ans | Seule C cochée (B « Non renouvelable »), **2 ans** |
+| Limite : 59 ans | `20129C77003` | ONDO Martin, 59 ans | C cochée, **5 ans** |
+| Limite : 60 ans | `20113D77004` | ESSONO Rose, 60 ans | D cochée, **2 ans** |
+| Tout est valide | `20221B77005` | MBA Serge, 36 ans | Pas de C / D : rien à renouveler |
+| A à E toutes expirées | `20084C77006` | KOUMBA Lucie, 48 ans | Seules C et D cochées, **5 ans** |
+| Déjà renouvelé deux fois (`date_renou1/2`) | `19986C77007` | NDONG Félix, 54 ans | C expirée, **5 ans** |
 | C expirée hier, B expire dans 3 semaines | `20168C77008` | OBIANG Claire, 31 ans | Seule C cochée |
-| Expirée depuis 9 ans | `19955A77009` | MOUKAGNI Jacques, 75 ans | **2 ans** |
-| Jeune conducteur | `20232B77010` | MINTSA Kevin, 22 ans | **5 ans** |
-| 3 permis distincts rattachés (B fiche d'enregistrement, C et D duplicatas, provinces différentes) | `20051B77011`, `20112C77011` ou `20178D77011` | ASSOUMOU Pascal, 45 ans | Les 3 catégories affichées quel que soit le numéro saisi ; B et C expirées et cochées, D valide ; **5 ans** |
+| Expirée depuis 9 ans | `19955D77009` | MOUKAGNI Jacques, 75 ans | D cochée, **2 ans** |
+| B expirée seule | `20232B77010` | MINTSA Kevin, 22 ans | Rien à renouveler |
+| 3 permis distincts rattachés (B fiche d'enregistrement, C et D duplicatas, provinces différentes) | `20051B77011`, `20112C77011` ou `20178D77011` | ASSOUMOU Pascal, 45 ans | Les 3 catégories affichées quel que soit le numéro saisi ; **C et D cochées**, B « Non renouvelable » ; **5 ans** |
 
 N'importe quel numéro d'un titulaire affiche toutes ses catégories.
 

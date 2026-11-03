@@ -68,6 +68,9 @@ use App\Http\Helpers\CentreScopeHelper;
 #[Group('Dossiers', description: 'Gestion des dossiers (expired, suspended, province_id, centre_id, data_categorie en JSON nullable). Si le dossier a un centre_id, province_id est aligné sur la province liée au centre (parent_id du référentiel centre). Restriction centre : un agent (utilisateur avec centre_id, hors ROLE_CANDIDAT) ne voit et ne peut traiter que les dossiers de son centre ; les rôles admin reconnus (bypassesDossierCentreScope) voient tous les centres ; 403 si accès à un dossier d\'un autre centre pour un agent non admin. **Suivi remise carte au centre** : `GET /dossiers/envoi-biometrie` liste les dossiers dont le statut est l’un de **DOSSIER ENVOYER** (filtre liste), **CARTE_DISPONIBLE_AU_CENTRE**, **CARTE_REMIS_AU_CANDIDAT** ; `POST /dossiers/{dossier}/notifier-carte-disponible` (prérequis **`DOSSIER ENVOYER`**, voir `Dossier::STATUT_DOSSIER_ENVOYER`) envoie le SMS Airtel au candidat et passe au statut CARTE_DISPONIBLE_AU_CENTRE si l\'envoi réussit ; `POST /dossiers/{dossier}/carte-remise-candidat` passe de CARTE_DISPONIBLE_AU_CENTRE à CARTE_REMIS_AU_CANDIDAT.')]
 class DossierController extends Controller
 {
+    /** Catégories pouvant faire l'objet d'un renouvellement (règle DGTT actuelle). */
+    private const CATEGORIES_RENOUVELABLES = ['C', 'D'];
+
     protected DossierService $dossierService;
     protected $alfresco;
     protected $paynalaService;
@@ -558,6 +561,17 @@ class DossierController extends Controller
 
             // Renouvellement : un seul dossier en cours par numéro de permis (évite les doublons
             // en cas de double clic ou de reprise). On renvoie le dossier existant non encore transmis.
+            $nonRenouvelables = $this->categoriesNonRenouvelables($data);
+            if ($nonRenouvelables !== []) {
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seules les catégories ' . implode(' et ', self::CATEGORIES_RENOUVELABLES)
+                        . ' peuvent être renouvelées (refusé : ' . implode(', ', $nonRenouvelables) . ').',
+                ], 422);
+            }
+
             $renouvellementEnCours = $this->findRenouvellementEnCours($data);
             if ($renouvellementEnCours) {
                 DB::rollBack();
@@ -1675,6 +1689,34 @@ class DossierController extends Controller
     }
 
     /**
+     * Classes d'un dossier RENOUVELLEMENT qui ne sont pas renouvelables (vide si tout est permis ou autre type).
+     *
+     * @param  array<string, mixed>  $data  Données validées du dossier à créer
+     * @return list<string>
+     */
+    private function categoriesNonRenouvelables(array $data): array
+    {
+        $typeDemandeId = $data['type_demande_id'] ?? null;
+        if (!$typeDemandeId || empty($data['data_categorie']) || !is_array($data['data_categorie'])) {
+            return [];
+        }
+        if (TypeDemande::where('id', $typeDemandeId)->value('name') !== 'RENOUVELLEMENT') {
+            return [];
+        }
+
+        $refusees = [];
+        foreach ($data['data_categorie'] as $cat) {
+            $ligne = is_string($cat) ? json_decode($cat, true) : $cat;
+            $classe = strtoupper(trim((string) (is_array($ligne) ? ($ligne['classe'] ?? '') : '')));
+            if ($classe !== '' && !in_array($classe, self::CATEGORIES_RENOUVELABLES, true)) {
+                $refusees[] = $classe;
+            }
+        }
+
+        return array_values(array_unique($refusees));
+    }
+
+    /**
      * Renouvellement : nouvelles dates de validité des catégories, à partir du jour du paiement.
      * Durée : 2 ans si le titulaire a plus de 59 ans, 5 ans sinon.
      * Idempotent : une catégorie déjà marquée `renouvele` n'est pas recalculée (ancienne validité conservée).
@@ -1697,7 +1739,8 @@ class DossierController extends Controller
         $lignes = [];
         foreach ($dossier->data_categorie as $cat) {
             $ligne = is_string($cat) ? json_decode($cat, true) : $cat;
-            if (!is_array($ligne) || !empty($ligne['renouvele'])) {
+            $classe = strtoupper(trim((string) (is_array($ligne) ? ($ligne['classe'] ?? '') : '')));
+            if (!is_array($ligne) || !empty($ligne['renouvele']) || !in_array($classe, self::CATEGORIES_RENOUVELABLES, true)) {
                 $lignes[] = $cat;
                 continue;
             }

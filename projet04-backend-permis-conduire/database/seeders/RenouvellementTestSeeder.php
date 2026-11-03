@@ -26,7 +26,7 @@ class RenouvellementTestSeeder extends Seeder
 
         // [code, nom, prenom, sexe, date_naissance, lieu_naissance, province, [[categorie, numero, date_obtention, date_validite, renou1, renou2]]]
         $titulaires = [
-            // 41 ans, B expirée, A encore valide → renouvelle B pour 5 ans
+            // 41 ans, B expirée, A valide : aucune catégorie renouvelable (seules C et D le sont)
             ['01', 'MOUSSAVOU', 'Alain', 'M', $auj->copy()->subYears(41)->subMonths(3), 'Libreville', 'Estuaire', [
                 ['A', '20151A77001', $auj->copy()->subYears(8), $auj->copy()->addYears(2), null, null],
                 ['B', '20151B77001', $auj->copy()->subYears(11), $auj->copy()->subMonths(8), null, null],
@@ -38,18 +38,18 @@ class RenouvellementTestSeeder extends Seeder
             ]],
             // 59 ans révolus (pas plus de 59) → 5 ans
             ['03', 'ONDO', 'Martin', 'M', $auj->copy()->subYears(59)->subMonths(4), 'Bitam', 'Woleu-Ntem', [
-                ['B', '20129B77003', $auj->copy()->subYears(14), $auj->copy()->subMonths(2), null, null],
+                ['C', '20129C77003', $auj->copy()->subYears(14), $auj->copy()->subMonths(2), null, null],
             ]],
             // 60 ans → 2 ans
             ['04', 'ESSONO', 'Rose', 'F', $auj->copy()->subYears(60)->subMonths(1), 'Lambaréné', 'Moyen-Ogooué', [
-                ['B', '20113B77004', $auj->copy()->subYears(15), $auj->copy()->subMonths(6), null, null],
+                ['D', '20113D77004', $auj->copy()->subYears(15), $auj->copy()->subMonths(6), null, null],
             ]],
             // Tout est valide : rien à renouveler
             ['05', 'MBA', 'Serge', 'M', $auj->copy()->subYears(36), 'Libreville', 'Estuaire', [
                 ['A', '20221A77005', $auj->copy()->subYears(4), $auj->copy()->addYears(6), null, null],
                 ['B', '20221B77005', $auj->copy()->subYears(4), $auj->copy()->addYears(6), null, null],
             ]],
-            // Poids lourd : A, B, C, D, E toutes expirées
+            // A à E toutes expirées : seules C et D cochées
             ['06', 'KOUMBA', 'Lucie', 'F', $auj->copy()->subYears(48), 'Mouila', 'Ngounié', [
                 ['A', '20084A77006', $auj->copy()->subYears(18), $auj->copy()->subYears(1), null, null],
                 ['B', '20084B77006', $auj->copy()->subYears(18), $auj->copy()->subYears(1), null, null],
@@ -59,26 +59,26 @@ class RenouvellementTestSeeder extends Seeder
             ]],
             // Déjà renouvelé deux fois par le passé, à nouveau expiré
             ['07', 'NDONG', 'Félix', 'M', $auj->copy()->subYears(54), 'Makokou', 'Ogooué-Ivindo', [
-                ['B', '19986B77007', $auj->copy()->subYears(28), $auj->copy()->subMonths(1), $auj->copy()->subYears(16), $auj->copy()->subYears(6)],
+                ['C', '19986C77007', $auj->copy()->subYears(28), $auj->copy()->subMonths(1), $auj->copy()->subYears(16), $auj->copy()->subYears(6)],
             ]],
             // C expirée hier, B expire dans 3 semaines (pas encore expirée)
             ['08', 'OBIANG', 'Claire', 'F', $auj->copy()->subYears(31), 'Port-Gentil', 'Ogooué-Maritime', [
                 ['B', '20168B77008', $auj->copy()->subYears(10), $auj->copy()->addWeeks(3), null, null],
                 ['C', '20168C77008', $auj->copy()->subYears(10), $auj->copy()->subDay(), null, null],
             ]],
-            // 75 ans, A seule expirée depuis longtemps → 2 ans
+            // 75 ans, D seule expirée depuis longtemps → 2 ans
             ['09', 'MOUKAGNI', 'Jacques', 'M', $auj->copy()->subYears(75), 'Tchibanga', 'Nyanga', [
-                ['A', '19955A77009', $auj->copy()->subYears(31), $auj->copy()->subYears(9), null, null],
+                ['D', '19955D77009', $auj->copy()->subYears(31), $auj->copy()->subYears(9), null, null],
             ]],
-            // 22 ans, B expirée (permis probatoire court) → 5 ans
+            // 22 ans, B expirée : non renouvelable
             ['10', 'MINTSA', 'Kevin', 'M', $auj->copy()->subYears(22)->subMonths(2), 'Franceville', 'Haut-Ogooué', [
                 ['B', '20232B77010', $auj->copy()->subYears(3), $auj->copy()->subWeeks(2), null, null],
             ]],
-            // 3 permis distincts (B, C, D) obtenus à des dates et dans des provinces différentes, rattachés à la même personne
+            // 3 permis distincts (B, C, D) obtenus à des dates et dans des provinces différentes, rattachés à la même personne ; C et D expirées
             ['11', 'ASSOUMOU', 'Pascal', 'M', $auj->copy()->subYears(45), 'Libreville', 'Estuaire', [
                 ['B', '20051B77011', $auj->copy()->subYears(21), $auj->copy()->subYears(1), $auj->copy()->subYears(11), null, 'FICHE_ENREGISTREMENT', 'Estuaire'],
                 ['C', '20112C77011', $auj->copy()->subYears(15), $auj->copy()->subMonths(5), null, null, 'DUPLICATA', 'Haut-Ogooué'],
-                ['D', '20178D77011', $auj->copy()->subYears(9), $auj->copy()->addYears(1), null, null, 'DUPLICATA', 'Ogooué-Maritime'],
+                ['D', '20178D77011', $auj->copy()->subYears(9), $auj->copy()->subMonths(2), null, null, 'DUPLICATA', 'Ogooué-Maritime'],
             ]],
         ];
 
