@@ -14,6 +14,10 @@ class DossierService
      */
     public function sendToCneddt(array $payload): array
     {
+        if (self::simulationActive()) {
+            return self::reponseSimulee();
+        }
+
         $service = config('services.cneddt_api');
 
         if (!isset($service['url']) || !isset($service['key']) || empty($service['url']) || empty($service['key'])) {
@@ -72,6 +76,13 @@ class DossierService
     {
         if (empty($items)) {
             return [];
+        }
+
+        if (self::simulationActive()) {
+            return array_map(fn($item) => [
+                'dossier_id' => $item['dossier_id'],
+                'result' => self::reponseSimulee(),
+            ], $items);
         }
 
         $service = config('services.cneddt_api');
@@ -151,6 +162,34 @@ class DossierService
         }
 
         return $results;
+    }
+
+    /**
+     * Simulation CNEDDT (CNEDDT_SIMULATION=true), jamais hors environnement local.
+     */
+    private static function simulationActive(): bool
+    {
+        return (bool) config('services.cneddt_api.simulation') && app()->environment('local');
+    }
+
+    /**
+     * Réponse au format CNEDDT avec un short code fictif.
+     */
+    private static function reponseSimulee(): array
+    {
+        $shortCode = 'SIM-' . strtoupper(Str::random(6));
+        Log::warning('CNEDDT simulé : aucun envoi réel', ['cashier_short_code' => $shortCode]);
+
+        return [
+            'success' => true,
+            'data' => [
+                'success' => true,
+                'code' => 201,
+                'message' => 'Simulation CNEDDT (local)',
+                'data' => ['cashier_short_code' => $shortCode],
+            ],
+            'http_status' => 201,
+        ];
     }
 
     /**

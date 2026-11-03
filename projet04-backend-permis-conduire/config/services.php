@@ -46,6 +46,8 @@ return [
     'cneddt_api' => [
         'url'=> env('CNEDDT_API_URL'),
         'key'=> env('CNEDDT_API_KEY'),
+        // Local uniquement : réponse CNEDDT simulée (short code SIM-XXXXXX), aucun appel réseau
+        'simulation' => env('CNEDDT_SIMULATION', false),
     ],
 
     'sms' => [
@@ -67,6 +69,8 @@ return [
         'paynala' => [
         'key' => env('PAYNALA_API_KEY'),
         'base_url' => env('PAYNALA_BASE_URL'),
+        // Local uniquement : tout code de paiement est considéré comme payé
+        'simulation' => env('PAYNALA_SIMULATION', false),
     ],
 
     /*

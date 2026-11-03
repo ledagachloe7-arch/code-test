@@ -156,9 +156,11 @@ const RenouvellementSimplifie: React.FC<RenouvellementSimplifieProps> = ({
   /** Catégories avec leurs nouvelles dates, calculées par le serveur après paiement (2 ans si > 59 ans, sinon 5 ans). */
   const [categoriesRenouvelees, setCategoriesRenouvelees] = useState<PermisApiData[]>([]);
 
-  const rafraichirNouvellesDates = useCallback(async (dossierId: string) => {
+  const rafraichirNouvellesDates = useCallback(async (dossierId: string): Promise<PermisApiData[]> => {
     const d = await chargerDossierAvecCategories(dossierId).catch(() => null);
-    if (d) setCategoriesRenouvelees(d.categories.filter((c) => c.renouvele));
+    const renouvelees = d ? d.categories.filter((c) => c.renouvele) : [];
+    if (d) setCategoriesRenouvelees(renouvelees);
+    return renouvelees;
   }, []);
 
   const categoriesSelectionnees = useMemo(
@@ -341,7 +343,6 @@ const RenouvellementSimplifie: React.FC<RenouvellementSimplifieProps> = ({
       if (body?.data?.paid ?? body?.paid) {
         // Le serveur vient de calculer les nouvelles dates de validité
         await rafraichirNouvellesDates(dossier.id);
-        setInfo('Paiement vérifié : nouvelles dates de validité calculées.');
         setEtape('cneddt');
       } else {
         setError(body?.data?.message ?? body?.message ?? 'Paiement en attente de validation.');
@@ -353,8 +354,35 @@ const RenouvellementSimplifie: React.FC<RenouvellementSimplifieProps> = ({
     }
   }, [dossier, codePaiement, rafraichirNouvellesDates]);
 
-  // ── 4. Transmission CNEDDT (pas de biométrie) → short code ──────────────────
-  const handleEnvoyerCNEDDT = useCallback(async () => {
+  const handleImprimer = useCallback(async (code: string = shortCode, renouvelees: PermisApiData[] = categoriesRenouvelees) => {
+    if (!dossier || !principal) return;
+    await telechargerRecepisseRenouvellementPdf({
+      dossierId: dossier.id,
+      numeroDossier: dossier.numero,
+      shortCode: code,
+      dateTransfert: new Date(),
+      numeroPermis: numeroDossier || String(principal.numero_permis ?? ''),
+      personne: {
+        nom: String(principal.nom ?? ''),
+        prenom: String(principal.prenom ?? ''),
+        date_naissance: fmtDate(principal.date_naissance),
+        lieu_naissance: String(principal.lieu_naissance ?? ''),
+        nationalite: String(principal.nationalite ?? ''),
+        numero_piece: String(principal.numero_identite ?? nouveauCandidat.numero_piece ?? ''),
+        contact: candidat?.personne?.contact ?? nouveauCandidat.telephone,
+      },
+      categoriesRenouvelees: (renouvelees.length ? renouvelees : categoriesSelectionnees).map((p) => ({
+        categorie: String(p.categorie ?? ''),
+        numero: String(p.numero_permis ?? ''),
+        valable_du: p.renouvele ? fmtDate(p.date_obtention) : '',
+        jusqu_au: p.renouvele ? fmtDate(p.date_validite) : '',
+        ancienne_validite: p.renouvele ? fmtDate(p.ancienne_validite) : fmtDate(p.date_validite),
+      })),
+    });
+  }, [dossier, principal, shortCode, candidat, nouveauCandidat, categoriesSelectionnees, categoriesRenouvelees, numeroDossier]);
+
+  // ── 4. Validation : transmission CNEDDT (pas de biométrie) → short code → récépissé ──
+  const handleValiderEtEnvoyer = useCallback(async () => {
     if (!dossier) return;
     setBusy(true);
     setError(null);
@@ -369,41 +397,17 @@ const RenouvellementSimplifie: React.FC<RenouvellementSimplifieProps> = ({
       }
       if (!code) setInfo("Demande transmise au CNEDDT, mais aucun short code n'a été renvoyé.");
       // Dates éventuellement calculées à l'envoi (paiement contourné)
-      await rafraichirNouvellesDates(dossier.id);
+      const renouvelees = await rafraichirNouvellesDates(dossier.id);
       setEtape('termine');
+      await handleImprimer(code, renouvelees).catch(() => {
+        setInfo("Renouvellement transmis. Le récépissé n'a pas pu être généré automatiquement : utilisez « Réimprimer le récépissé ».");
+      });
     } catch (err) {
       setError(errorMessage(err, "Erreur lors de l'envoi au CNEDDT."));
     } finally {
       setBusy(false);
     }
-  }, [dossier, typeDemandeId, rafraichirNouvellesDates]);
-
-  const handleImprimer = useCallback(async () => {
-    if (!dossier || !principal) return;
-    await telechargerRecepisseRenouvellementPdf({
-      dossierId: dossier.id,
-      numeroDossier: dossier.numero,
-      shortCode,
-      dateTransfert: new Date(),
-      numeroPermis: numeroDossier || String(principal.numero_permis ?? ''),
-      personne: {
-        nom: String(principal.nom ?? ''),
-        prenom: String(principal.prenom ?? ''),
-        date_naissance: fmtDate(principal.date_naissance),
-        lieu_naissance: String(principal.lieu_naissance ?? ''),
-        nationalite: String(principal.nationalite ?? ''),
-        numero_piece: String(principal.numero_identite ?? nouveauCandidat.numero_piece ?? ''),
-        contact: candidat?.personne?.contact ?? nouveauCandidat.telephone,
-      },
-      categoriesRenouvelees: (categoriesRenouvelees.length ? categoriesRenouvelees : categoriesSelectionnees).map((p) => ({
-        categorie: String(p.categorie ?? ''),
-        numero: String(p.numero_permis ?? ''),
-        valable_du: p.renouvele ? fmtDate(p.date_obtention) : '',
-        jusqu_au: p.renouvele ? fmtDate(p.date_validite) : '',
-        ancienne_validite: p.renouvele ? fmtDate(p.ancienne_validite) : fmtDate(p.date_validite),
-      })),
-    });
-  }, [dossier, principal, shortCode, candidat, nouveauCandidat, categoriesSelectionnees, categoriesRenouvelees, numeroDossier]);
+  }, [dossier, typeDemandeId, rafraichirNouvellesDates, handleImprimer]);
 
   const tableauNouvellesDates = categoriesRenouvelees.length > 0 && (
     <Table size="small" sx={{ mb: 2 }}>
@@ -659,7 +663,14 @@ const RenouvellementSimplifie: React.FC<RenouvellementSimplifieProps> = ({
               )}
             </Stack>
           ) : (
-            <Alert severity="success">Paiement vérifié.</Alert>
+            <Stack spacing={1.5}>
+              <Alert severity="success">
+                {categoriesRenouvelees.length > 0
+                  ? `Paiement vérifié : renouvellement effectué pour ${categoriesRenouvelees.length > 1 ? 'les catégories' : 'la catégorie'} ${categoriesRenouvelees.map((p) => p.categorie).join(', ')}.`
+                  : 'Paiement vérifié. Les nouvelles dates seront calculées à la validation.'}
+              </Alert>
+              {tableauNouvellesDates}
+            </Stack>
           )}
         </Paper>
       )}
@@ -667,12 +678,16 @@ const RenouvellementSimplifie: React.FC<RenouvellementSimplifieProps> = ({
       {/* ── CNEDDT : short code + récépissé ──────────────────────────────── */}
       {(etape === 'cneddt' || etape === 'termine') && (
         <Paper variant="outlined" sx={{ p: 2 }}>
-          <Typography variant="subtitle1" fontWeight={700} gutterBottom>Transmission au CNEDDT</Typography>
-          {tableauNouvellesDates}
+          <Typography variant="subtitle1" fontWeight={700} gutterBottom>Validation et récépissé</Typography>
           {etape === 'cneddt' ? (
-            <Button variant="contained" onClick={() => void handleEnvoyerCNEDDT()} disabled={busy}>
-              {busy ? <CircularProgress size={20} color="inherit" /> : 'Envoyer à la CNEDDT'}
-            </Button>
+            <Stack spacing={1} alignItems="flex-start">
+              <Typography variant="body2" color="text.secondary">
+                La validation envoie le renouvellement à la CNEDDT, récupère le short code et génère le récépissé.
+              </Typography>
+              <Button variant="contained" onClick={() => void handleValiderEtEnvoyer()} disabled={busy}>
+                {busy ? <CircularProgress size={20} color="inherit" /> : 'Valider et envoyer à la CNEDDT'}
+              </Button>
+            </Stack>
           ) : (
             <Stack spacing={2} alignItems="flex-start">
               <Box sx={{ border: 2, borderColor: 'primary.main', borderRadius: 2, px: 4, py: 2, textAlign: 'center' }}>
@@ -680,7 +695,7 @@ const RenouvellementSimplifie: React.FC<RenouvellementSimplifieProps> = ({
                 <Typography variant="h3" fontWeight={800} letterSpacing={2}>{shortCode || '—'}</Typography>
               </Box>
               <Stack direction="row" spacing={1.5}>
-                <Button variant="contained" onClick={() => void handleImprimer()}>Imprimer le récépissé</Button>
+                <Button variant="contained" onClick={() => void handleImprimer()}>Réimprimer le récépissé</Button>
                 <Button variant="outlined" onClick={() => { resetAll(); setNumeroSaisi(''); }}>Nouveau renouvellement</Button>
               </Stack>
             </Stack>

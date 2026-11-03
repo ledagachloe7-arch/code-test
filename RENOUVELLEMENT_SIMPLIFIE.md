@@ -32,9 +32,9 @@ Le bouton « Créer un dossier » de *Gestion dossier* ouvre l'ancien parcours p
 | 3 | Onglet **Catégories à renouveler** | Cases à cocher : **seules C et D sont sélectionnables** (voir §3.0), les C / D expirées sont cochées d'avance. Les autres catégories sont affichées « Non renouvelable ». Pas d'ajout ni de modification de catégorie. | — |
 | 4 | Titulaire | **Candidat existant** retrouvé par nom + prénom + date de naissance. Sinon, mini-formulaire : téléphone (obligatoire), genre, type et n° de pièce, email facultatif. | — |
 | 5 | **Valider et passer au paiement** | Création du dossier (ou reprise de celui en cours, voir §3.1) et génération du code de paiement | `en_attente` → `EN_ATTENTE_PAIEMENT` |
-| 6 | **Vérifier le paiement** | Vérification Paynala, puis **calcul automatique des nouvelles dates** (voir §3.2) et affichage du tableau ancienne / nouvelle validité | inchangé |
-| 7 | **Envoyer à la CNEDDT** | Transfert `RENOUVELLEMENT` (sans biométrie). La CNEDDT renvoie le **short code** (`cashier_short_code`), affiché en grand et envoyé par SMS. | `DOSSIER ENVOYER` |
-| 8 | **Imprimer le récépissé** | PDF « Récépissé de renouvellement » : short code, titulaire, catégories avec ancienne validité / valable du / jusqu'au | — |
+| 6 | **Vérifier le paiement** | Vérification Paynala, puis **calcul automatique des nouvelles dates** (voir §3.2). L'écran affiche aussitôt « Paiement vérifié : renouvellement effectué pour la catégorie … » et le tableau ancienne / nouvelle validité. | `PAIEMENT DE FRAIS  D'EXAMEN - Complété` |
+| 7 | **Valider et envoyer à la CNEDDT** | Un seul bouton : transfert `RENOUVELLEMENT` (sans biométrie), récupération du **short code** (`cashier_short_code`, affiché en grand et envoyé par SMS), puis **téléchargement automatique du récépissé**. | `DOSSIER ENVOYER` |
+| 8 | **Réimprimer le récépissé** | PDF « Récépissé de renouvellement » : short code, titulaire, catégories avec ancienne validité / valable du / jusqu'au | — |
 
 ### 2.2 Personne non digitalisée (catégories expirées)
 
@@ -127,6 +127,15 @@ Les dossiers `RENOUVELLEMENT` **ne sont plus listés** dans *Gestion dossier* : 
 
 **Aucune migration** : tout passe par des colonnes existantes.
 
+**Simulation locale** (voir §6) :
+
+| Fichier | Changement |
+|---|---|
+| `config/services.php` | `paynala.simulation` (`PAYNALA_SIMULATION`) et `cneddt_api.simulation` (`CNEDDT_SIMULATION`), `false` par défaut. |
+| `app/Services/PaiementService.php` | `checkAndProcessPaymentForDossier` utilise `reponsePaynalaSimulee()` au lieu de Paynala quand la simulation est active et `APP_ENV=local`. |
+| `app/Http/Services/DossierService.php` | `sendToCneddt` / `sendManyToCneddt` renvoient une réponse CNEDDT fictive (`reponseSimulee()`, short code `SIM-XXXXXX`) dans les mêmes conditions. |
+| `.env.example` | Les deux variables, à `false`. |
+
 ### 4.3 Format de `dossiers.data_categorie`
 
 Chaque ligne garde le format existant `{ classe, ville, codification_code, valable_du, jusqu_au }`. Après paiement d'un renouvellement, trois champs sont ajoutés :
@@ -194,8 +203,13 @@ Compte : `admin@permis.local` / `123456`. Page : `http://localhost:3000/eleves/n
 N'importe quel numéro d'un titulaire affiche toutes ses catégories.
 
 **Limites en local :**
-- **Paiement** : `PAYNALA_API_KEY` et `PAYNALA_BASE_URL` sont vides, donc la vérification échoue. Seul `developpeuradmin@rd.com` peut la contourner (bouton « Contourner (dev) »). Dans ce cas, les dates sont calculées à l'envoi CNEDDT.
-- **CNEDDT** : `CNEDDT_API_URL` et `CNEDDT_API_KEY` sont vides, donc l'envoi échoue : pas de short code ni de récépissé de renouvellement en local.
+- Paynala et la CNEDDT ne sont pas configurés en local. Pour dérouler tout le parcours, activer le **mode simulation** dans `projet04-backend-permis-conduire/.env` :
+  ```
+  PAYNALA_SIMULATION=true   # tout code de paiement est considéré comme payé (montant 0, référence SIMULATION)
+  CNEDDT_SIMULATION=true    # aucun appel réseau, short code fictif SIM-XXXXXX
+  ```
+  Les deux variables sont **ignorées si `APP_ENV` n'est pas `local`** et chaque simulation écrit un avertissement dans `storage/logs/laravel.log`. Le reste du parcours (historique de paiement, statuts, calcul des dates, SMS) se déroule normalement. Après modification du `.env` : `php artisan config:clear`.
+- Sans simulation, seul `developpeuradmin@rd.com` peut contourner le paiement (bouton « Contourner (dev) ») ; les dates sont alors calculées à l'envoi CNEDDT.
 - Les données de test contiennent des doublons (permis avec et sans tirets dans `h_permis`, candidat NGUEMA Paul en double). Ce n'est pas lié à cette fonctionnalité.
 
 ---

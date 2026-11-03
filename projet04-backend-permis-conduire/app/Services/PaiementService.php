@@ -56,7 +56,10 @@ class PaiementService
             if ($dossier->code_paiement != null) {
 
                 // Paynala lookup-payment : même contrat que checkAndProcessPaymentForDossier (success, count > 0, data.payments[0].status SUCCESS).
-                $result = $this->paynalaService->lookupPayment($dossier->code_paiement);
+                // Simulation locale (PAYNALA_SIMULATION=true) : réponse Paynala « payé », jamais hors environnement local
+        $result = (config('services.paynala.simulation') && app()->environment('local'))
+            ? $this->reponsePaynalaSimulee($dossier)
+            : $this->paynalaService->lookupPayment($dossier->code_paiement);
 
                 if ($result['success'] == true && $result['data'] != null && (int) ($result['count'] ?? 0) > 0) {
                     // Enregistrement paiement + mise à jour statut (le code_paiement est conservé sur le dossier)
@@ -200,5 +203,22 @@ class PaiementService
 
     public function historiquePayement(){
         return $this->paiementHistoriqueService->historiquePaiement();
+    }
+
+    /**
+     * Réponse Paynala fictive au format de lookupPayment (paiement SUCCESS, montant 0).
+     */
+    private function reponsePaynalaSimulee(Dossier $dossier): array
+    {
+        Log::warning('Paynala simulé : paiement considéré comme effectué', ['dossier_id' => $dossier->id]);
+
+        return [
+            'success' => true,
+            'count' => 1,
+            'data' => [
+                'payments' => [['status' => 'SUCCESS', 'airtel_money_id' => 'SIMULATION']],
+                'subscription' => ['amount' => 0],
+            ],
+        ];
     }
 }
