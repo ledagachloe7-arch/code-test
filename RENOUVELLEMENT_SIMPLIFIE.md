@@ -166,6 +166,23 @@ Compte : `admin@permis.local` / `123456`. Page : `http://localhost:3000/eleves/n
 | Non digitalisé | `99999X99999` | Encadré « Permis non digitalisé » avec 3 boutons |
 | Anti-doublon | refaire `20022B00002` après validation | « dossier existant repris (aucun doublon créé) » |
 
+**Jeu de test dédié** (`database/seeders/RenouvellementTestSeeder.php`, lignes `h_permis` avec `numero_identite` = `TEST-RN-*`). Relancer avec `php artisan db:seed --class=RenouvellementTestSeeder` : le seeder supprime et recrée uniquement ses lignes. Les dates et les âges sont calculés par rapport au jour du lancement.
+
+| Cas | Numéro à saisir | Titulaire | Attendu |
+|---|---|---|---|
+| B expirée, A valide | `20151B77001` | MOUSSAVOU Alain, 41 ans | B cochée seule, **5 ans** |
+| Plus de 59 ans, 2 catégories expirées | `20099B77002` | NZE Bernadette, 68 ans | B et C cochées, **2 ans** |
+| Limite : 59 ans | `20129B77003` | ONDO Martin, 59 ans | **5 ans** |
+| Limite : 60 ans | `20113B77004` | ESSONO Rose, 60 ans | **2 ans** |
+| Tout est valide | `20221B77005` | MBA Serge, 36 ans | Rien d'expiré, badges « Valide » |
+| 5 catégories expirées | `20084C77006` | KOUMBA Lucie, 48 ans | A à E cochées, **5 ans** |
+| Déjà renouvelé deux fois (`date_renou1/2`) | `19986B77007` | NDONG Félix, 54 ans | B expirée, **5 ans** |
+| C expirée hier, B expire dans 3 semaines | `20168C77008` | OBIANG Claire, 31 ans | Seule C cochée |
+| Expirée depuis 9 ans | `19955A77009` | MOUKAGNI Jacques, 75 ans | **2 ans** |
+| Jeune conducteur | `20232B77010` | MINTSA Kevin, 22 ans | **5 ans** |
+
+N'importe quel numéro d'un titulaire affiche toutes ses catégories.
+
 **Limites en local :**
 - **Paiement** : `PAYNALA_API_KEY` et `PAYNALA_BASE_URL` sont vides, donc la vérification échoue. Seul `developpeuradmin@rd.com` peut la contourner (bouton « Contourner (dev) »). Dans ce cas, les dates sont calculées à l'envoi CNEDDT.
 - **CNEDDT** : `CNEDDT_API_URL` et `CNEDDT_API_KEY` sont vides, donc l'envoi échoue : pas de short code ni de récépissé de renouvellement en local.
