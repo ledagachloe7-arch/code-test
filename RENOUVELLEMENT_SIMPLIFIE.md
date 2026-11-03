@@ -180,6 +180,7 @@ Compte : `admin@permis.local` / `123456`. Page : `http://localhost:3000/eleves/n
 | C expirée hier, B expire dans 3 semaines | `20168C77008` | OBIANG Claire, 31 ans | Seule C cochée |
 | Expirée depuis 9 ans | `19955A77009` | MOUKAGNI Jacques, 75 ans | **2 ans** |
 | Jeune conducteur | `20232B77010` | MINTSA Kevin, 22 ans | **5 ans** |
+| 3 permis distincts rattachés (B fiche d'enregistrement, C et D duplicatas, provinces différentes) | `20051B77011`, `20112C77011` ou `20178D77011` | ASSOUMOU Pascal, 45 ans | Les 3 catégories affichées quel que soit le numéro saisi ; B et C expirées et cochées, D valide ; **5 ans** |
 
 N'importe quel numéro d'un titulaire affiche toutes ses catégories.
 

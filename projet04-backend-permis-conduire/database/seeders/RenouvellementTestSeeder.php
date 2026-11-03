@@ -74,6 +74,12 @@ class RenouvellementTestSeeder extends Seeder
             ['10', 'MINTSA', 'Kevin', 'M', $auj->copy()->subYears(22)->subMonths(2), 'Franceville', 'Haut-Ogooué', [
                 ['B', '20232B77010', $auj->copy()->subYears(3), $auj->copy()->subWeeks(2), null, null],
             ]],
+            // 3 permis distincts (B, C, D) obtenus à des dates et dans des provinces différentes, rattachés à la même personne
+            ['11', 'ASSOUMOU', 'Pascal', 'M', $auj->copy()->subYears(45), 'Libreville', 'Estuaire', [
+                ['B', '20051B77011', $auj->copy()->subYears(21), $auj->copy()->subYears(1), $auj->copy()->subYears(11), null, 'FICHE_ENREGISTREMENT', 'Estuaire'],
+                ['C', '20112C77011', $auj->copy()->subYears(15), $auj->copy()->subMonths(5), null, null, 'DUPLICATA', 'Haut-Ogooué'],
+                ['D', '20178D77011', $auj->copy()->subYears(9), $auj->copy()->addYears(1), null, null, 'DUPLICATA', 'Ogooué-Maritime'],
+            ]],
         ];
 
         DB::transaction(function () use ($titulaires) {
@@ -81,7 +87,11 @@ class RenouvellementTestSeeder extends Seeder
 
             $lignes = [];
             foreach ($titulaires as [$code, $nom, $prenom, $sexe, $naissance, $lieuNaissance, $province, $categories]) {
-                foreach ($categories as [$categorie, $numero, $obtention, $validite, $renou1, $renou2]) {
+                foreach ($categories as $ligne) {
+                    // Type de permis et province d'obtention facultatifs (par défaut : duplicata dans la province du titulaire)
+                    [$categorie, $numero, $obtention, $validite, $renou1, $renou2] = $ligne;
+                    $typePermis = $ligne[6] ?? 'DUPLICATA';
+                    $lieuObtention = $ligne[7] ?? $province;
                     $lignes[] = [
                         'id' => (string) Str::uuid(),
                         'numero_identite' => self::PREFIXE . $code,
@@ -92,14 +102,14 @@ class RenouvellementTestSeeder extends Seeder
                         'date_naissance' => $naissance->toDateString(),
                         'lieu_naissance' => $lieuNaissance,
                         'numero_permis' => $numero,
-                        'type_permis' => 'DUPLICATA',
+                        'type_permis' => $typePermis,
                         'categorie' => $categorie,
                         'date_obtention' => $obtention->toDateString(),
-                        'lieu_obtention' => $province,
+                        'lieu_obtention' => $lieuObtention,
                         'date_validite' => $validite->toDateString(),
                         // Matricule de fiche d'enregistrement : X à la place de la catégorie
                         'numero_origine_permis' => substr($numero, 0, 5) . 'X' . substr($numero, 6),
-                        'lieu_origine' => $province,
+                        'lieu_origine' => $lieuObtention,
                         'date_renou1' => $renou1?->toDateString(),
                         'date_renou2' => $renou2?->toDateString(),
                         'date_renou3' => null,
