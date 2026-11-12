@@ -36,7 +36,7 @@ import { circuitService } from '../services/circuit.service'
 import { etapeService } from '../services/etape.service'
 import { statutService } from '../../statut/services/statut.service'
 import { typeDocumentService } from '../services/type-document.service'
-import { roleService } from '../services/role.service'
+import { roleService, Role } from '../services/role.service'
 import { TypeDocument } from '../types'
 import { Transition } from '../types/transition'
 import { transitionService } from '../services/transition.service'
@@ -85,7 +85,7 @@ const CircuitDetailPage: React.FC = () => {
   const [statuts, setStatuts] = useState<Statut[]>([])
   const [transitions, setTransitions] = useState<Transition[]>([])
   const [typeDocuments, setTypeDocuments] = useState<TypeDocument[]>([])
-  const [roles, setRoles] = useState<string[]>([])
+  const [roles, setRoles] = useState<Role[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [errorForm, setErrorForm] = useState<string | null>(null)
@@ -153,7 +153,23 @@ const CircuitDetailPage: React.FC = () => {
           ? (typeDocuments as { data: TypeDocument[] }).data 
           : [])
       setTypeDocuments(typeDocumentsArray);
-      setRoles(Array.isArray(rolesData) ? rolesData : ((rolesData as any)?.roles || []));
+      const rawRoles = Array.isArray(rolesData)
+        ? rolesData
+        : (rolesData && typeof rolesData === 'object' && 'data' in (rolesData as any)
+          ? (rolesData as { data: any[] }).data
+          : ((rolesData as any)?.roles || []))
+      const normalizedRoles: Role[] = (Array.isArray(rawRoles) ? rawRoles : [])
+        .map((r: any) => {
+          if (typeof r === 'string') {
+            return { code: r, libelle: r }
+          }
+          return {
+            code: r?.code || r?.name || r?.libelle || String(r),
+            libelle: r?.libelle || r?.name || r?.code || String(r)
+          }
+        })
+        .filter((r) => Boolean(r.code))
+      setRoles(normalizedRoles)
       const transitionsArray = Array.isArray(transitionsData)
         ? transitionsData
         : (transitionsData &&
@@ -290,7 +306,9 @@ const CircuitDetailPage: React.FC = () => {
       auto_advance: etape.auto_advance || false,
       statut_id: etape.statut_id || '',
       pieces: etape.pieces || [],
-      roles: etape.roles || []
+      roles: Array.isArray(etape.roles)
+        ? etape.roles.map((r: any) => (typeof r === 'object' && r !== null ? (r.code || r.name || String(r)) : String(r)))
+        : []
     })
     setErrorForm(null)
     setOpenEditEtape(true)
@@ -346,6 +364,8 @@ const CircuitDetailPage: React.FC = () => {
         circuit_id: id,
         code: formEtape.code.trim(),
         libelle: formEtape.libelle.trim(),
+        ordre: formEtape.ordre || 0,
+        auto_advance: formEtape.auto_advance || false,
         statut_id: formEtape.statut_id || '',
         roles: (formEtape.roles || []).filter((role): role is string => Boolean(role)),
         pieces: piecesValides
@@ -753,15 +773,26 @@ const CircuitDetailPage: React.FC = () => {
                   value={formEtape.roles ?? []}
                   label="Rôles"
                   onChange={(e) =>
-                    setFormEtape({ ...formEtape, roles: e.target.value as string[] })
+                    setFormEtape({
+                      ...formEtape,
+                      roles: typeof e.target.value === 'string' ? e.target.value.split(',') : (e.target.value as string[]),
+                    })
                   }
-                  renderValue={(selected) => (selected as string[]).join(', ')} // affichage lisible
+                  renderValue={(selected) => {
+                    const selectedCodes = selected as string[]
+                    return selectedCodes
+                      .map((code) => {
+                        const found = roles.find((r) => r.code === code)
+                        return found ? (found.libelle || found.code) : code
+                      })
+                      .join(', ')
+                  }}
                 >
                   {Array.isArray(roles) && roles.length > 0 ? (
                     roles.map((role) => (
-                      <MenuItem key={role} value={role}>
-                        <Checkbox checked={formEtape.roles?.includes(role) ?? false} />
-                        <Typography>{role}</Typography>
+                      <MenuItem key={role.code} value={role.code}>
+                        <Checkbox checked={formEtape.roles?.includes(role.code) ?? false} />
+                        <Typography>{role.libelle || role.code}</Typography>
                       </MenuItem>
                     ))
                   ) : (
@@ -1099,15 +1130,26 @@ const CircuitDetailPage: React.FC = () => {
                   value={formEtape.roles ?? []}
                   label="Rôles"
                   onChange={(e) =>
-                    setFormEtape({ ...formEtape, roles: e.target.value as string[] })
+                    setFormEtape({
+                      ...formEtape,
+                      roles: typeof e.target.value === 'string' ? e.target.value.split(',') : (e.target.value as string[]),
+                    })
                   }
-                  renderValue={(selected) => (selected as string[]).join(', ')}
+                  renderValue={(selected) => {
+                    const selectedCodes = selected as string[]
+                    return selectedCodes
+                      .map((code) => {
+                        const found = roles.find((r) => r.code === code)
+                        return found ? (found.libelle || found.code) : code
+                      })
+                      .join(', ')
+                  }}
                 >
                   {Array.isArray(roles) && roles.length > 0 ? (
                     roles.map((role) => (
-                      <MenuItem key={role} value={role}>
-                        <Checkbox checked={formEtape.roles?.includes(role) ?? false} />
-                        <Typography>{role}</Typography>
+                      <MenuItem key={role.code} value={role.code}>
+                        <Checkbox checked={formEtape.roles?.includes(role.code) ?? false} />
+                        <Typography>{role.libelle || role.code}</Typography>
                       </MenuItem>
                     ))
                   ) : (

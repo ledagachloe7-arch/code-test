@@ -59,12 +59,12 @@ class EtapeController extends Controller
         return $etape->load('statut');
     }
 
-    /** Met à jour une étape. Retourne l\'étape avec etapes. */
+    /** Met à jour une étape. Retourne l\'étape avec statut. */
     public function update(UpdateEtapeRequest $request, Etape $etape)
     {
         $etape->update($request->validated());
         Cache::tags(['etapes'])->flush();
-        return $etape->load('etapes');
+        return $etape->load('statut');
     }
 
     public function destroy(Etape $etape)

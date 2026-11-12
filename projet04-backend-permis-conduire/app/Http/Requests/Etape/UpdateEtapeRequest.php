@@ -22,7 +22,8 @@ class UpdateEtapeRequest extends FormRequest
      */
     public function rules(): array
     {
-        $etapeId = $this->route('etape')->id;
+        $etape = $this->route('etape');
+        $etapeId = is_object($etape) ? $etape->id : $etape;
 
         return [
             'circuit_id' => ['sometimes', 'uuid', 'exists:circuits,id'],

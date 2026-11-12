@@ -192,9 +192,56 @@ L'interface de connexion utilise la route API **`POST /api/auth/login-direct`**.
 
 ---
 
-## 6. Procédure de Démarrage Local
+### [2026-11-01] - Correction écran blanc à la sélection des Rôles dans la configuration d'Étape de Circuit
 
-Pour lancer l'environnement de développement complet :
+* **Composant/Projet concerné :** `projet07-frontend-auto-ecole-b` (Module Circuit Workflow)
+  * **Fichiers modifiés :**
+    * `src/modules/circuit/pages/CircuitDetailPage.tsx`
+  * **Description du Problème :**
+    * Dans la gestion du détail d'un circuit (`/workflow/circuits/:id`), lors de l'ouverture du dialogue *"Ajouter une étape"* ou *"Modifier l'étape"*, cliquer sur le menu déroulant à choix multiples **"Rôles"** provoquait un plantage immédiat et complet de l'application React avec écran blanc.
+    * **Cause technique racine :**
+      * L'API backend renvoie une collection d'objets `Role` : `[{ code: "ROLE_ADMIN", libelle: "Administrateur" }, ...]`.
+      * Le state local `roles` était typé `string[]`, mais recevait le tableau d'objets `Role[]`.
+      * Dans le composant MUI `<Select multiple>`, chaque élément était rendu ainsi :
+        `<Typography>{role}</Typography>` avec `value={role}`.
+      * En React 18, injecter directement un objet JavaScript comme enfant de `<Typography>` lève une exception fatale non rattrapée :  
+        `Uncaught Error: Objects are not valid as a React child (found: object with keys {code, libelle})`.
+      * Cette exception démontait l'ensemble de l'arbre de composants, produisant un écran blanc.
+  * **Solution Mise en Œuvre :**
+    * **Typage & Normalisation robuste :** Import de l'interface `Role` depuis `role.service.ts`, typage du state `const [roles, setRoles] = useState<Role[]>([])`, et normalisation automatique des rôles reçus (supporte aussi bien des objets `{code, libelle}` que des chaînes simples).
+    * **Correction des `<MenuItem>` et `<Select multiple>` (Ajout & Édition) :**
+      * Utilisation de `role.code` pour la `key` et la `value` du `MenuItem`.
+      * Affichage textuel sécurisé : `<Typography>{role.libelle || role.code}</Typography>`.
+      * Vérification du toggle : `<Checkbox checked={formEtape.roles?.includes(role.code) ?? false} />`.
+      * Rendu lisible personnalisé : `renderValue` affiche les libellés conviviaux (`libelle`) plutôt que les codes bruts.
+    * **Gestion sécurisée du formulaire d'édition :**
+      * `handleOpenEditEtape` normalise `etape.roles` en tableau de strings (`role.code`).
+      * Ajout des champs `ordre` et `auto_advance` dans le payload de mise à jour d'étape.
+    * **Affichage des rôles associés dans la fiche d'étape :** Ajout des libellés de rôles autorisés directement dans la carte de chaque étape de circuit.
+  * **Résultat :** Plus aucun plantage. La sélection multiple des rôles fonctionne de manière fluide et intuitive dans les modales d'ajout et d'édition d'étape, et la persistance en base Supabase / cache Redis s'effectue correctement.
+
+---
+
+### [2026-11-01] - Correction erreur `Call to undefined relationship [etapes]` lors de la mise à jour d'étape
+
+* **Composant/Projet concerné :** `projet04-backend-permis-conduire` (Contrôleur API Etape)
+  * **Fichiers modifiés :**
+    * `app/Http/Controllers/Api/EtapeController.php`
+    * `app/Http/Requests/Etape/UpdateEtapeRequest.php`
+  * **Description du Problème :**
+    * Lors de l'ajout de pièces justificatives à une étape existante ou de la modification d'une étape de circuit (`PUT /api/workflow/etapes/{id}`), le backend levait une erreur 500 :
+      `Call to undefined relationship [etapes] on model [App\Models\Etape].`
+    * **Cause technique racine :**
+      * Dans la méthode `update()` de `EtapeController.php`, la ligne retournait `$etape->load('etapes')`.
+      * Il s'agissait d'une coquille de copier-coller depuis `CircuitController` (où `$circuit->load('etapes')` est valide). Le modèle `Etape` ne possède évidemment pas de relation vers lui-même nommée `etapes`.
+  * **Solution Mise en Œuvre :**
+    * Remplacement de `$etape->load('etapes')` par `$etape->load('statut')` dans `EtapeController::update()`, cohérent avec la méthode `show()`.
+    * Sécurisation de l'extraction de l'ID d'étape dans `UpdateEtapeRequest::rules()` pour gérer à la fois les objets de binding et les chaînes d'identifiants.
+  * **Résultat :** La mise à jour d'étape avec ajout ou retrait d'exigences de pièces justificatives s'enregistre avec succès (code HTTP 200).
+
+---
+
+## 6. Procédure de Démarrage Local
 
 ### Étape 0 - S'assurer que le conteneur Docker Redis tourne :
 ```powershell
