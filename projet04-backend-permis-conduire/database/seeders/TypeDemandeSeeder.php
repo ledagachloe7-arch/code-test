@@ -16,6 +16,7 @@ class TypeDemandeSeeder extends Seeder
             'DUPLICATAFICHEENREGISTREMENT',
             'RENOUVELLEMENT',
             'CONVERSION',
+            'MISEAJOUR',
         ];
 
         foreach ($types as $type) {
@@ -25,6 +26,6 @@ class TypeDemandeSeeder extends Seeder
             );
         }
 
-        $this->command->info('Les 6 types de demande ont été initialisés.');
+        $this->command->info('Les 7 types de demande ont été initialisés.');
     }
 }

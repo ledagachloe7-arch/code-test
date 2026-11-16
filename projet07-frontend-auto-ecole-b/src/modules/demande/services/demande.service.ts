@@ -749,6 +749,61 @@ export async function createDossierRenouvellement(input: {
   }
 }
 
+/** Statut et code de paiement courants d'un dossier (code généré par le serveur au passage en attente de paiement). */
+export async function fetchStatutEtCodePaiement(dossierId: string): Promise<{ statut: string; code: string }> {
+  const res = await axiosClient.get(`/dossiers/${dossierId}`);
+  const d = (res.data?.data ?? res.data) as Record<string, unknown>;
+  const attrs = d?.attributes as Record<string, unknown> | undefined;
+  return {
+    statut: String(d?.statut ?? attrs?.statut ?? ''),
+    code: String(d?.code_paiement ?? attrs?.code_paiement ?? '').trim(),
+  };
+}
+
+// ── Mise à jour (correction d'état civil) ────────────────────────────────────
+
+/** Champs corrigeables, dans l'ordre d'affichage (mêmes clés que CHAMPS_MISE_A_JOUR côté serveur). */
+export const CHAMPS_MISE_A_JOUR = [
+  { cle: 'nom', label: 'Nom' },
+  { cle: 'prenom', label: 'Prénom' },
+  { cle: 'date_naissance', label: 'Date de naissance' },
+  { cle: 'lieu_naissance', label: 'Lieu de naissance' },
+  { cle: 'sexe', label: 'Sexe' },
+  { cle: 'nationalite', label: 'Nationalité' },
+] as const;
+
+export type ChampMiseAJour = (typeof CHAMPS_MISE_A_JOUR)[number]['cle'];
+export type CorrectionsMiseAJour = Partial<Record<ChampMiseAJour, { ancienne: string; nouvelle: string }>>;
+
+/**
+ * Crée (ou reprend) le dossier de mise à jour. Les corrections sont appliquées au candidat par le serveur
+ * après paiement vérifié. Le serveur renvoie `existing: true` s'il reprend une mise à jour non appliquée.
+ */
+export async function createDossierMiseAJour(input: {
+  candidatId: string;
+  typeDemandeId: string;
+  numeroPermis: string;
+  corrections: CorrectionsMiseAJour;
+}): Promise<{ dossierId: string; numero?: string; existing: boolean }> {
+  try {
+    const resp = await axiosClient.post('/dossiers', {
+      candidat_id: input.candidatId,
+      type_demande_id: input.typeDemandeId,
+      statut: 'en_attente',
+      expired: false,
+      suspended: false,
+      numero_permis: input.numeroPermis.replace(/-/g, '').trim(),
+      donnees_mise_a_jour: { champs: input.corrections },
+    });
+    const body = resp.data as { existing?: boolean; data?: { id?: string; numero?: string } };
+    const dossierId = String(body?.data?.id ?? '');
+    if (!dossierId) throw new Error('Réponse de création du dossier invalide (id manquant).');
+    return { dossierId, numero: body?.data?.numero, existing: Boolean(body?.existing) };
+  } catch (err) {
+    throw new Error(extractError(err, 'Erreur lors de la création du dossier de mise à jour.'));
+  }
+}
+
 /** Types de demande qui digitalisent un permis existant (préalable au renouvellement d'une personne non digitalisée). */
 export const TYPES_DIGITALISATION = ['FICHEENREGISTREMENT', 'DUPLICATAFICHEENREGISTREMENT', 'DUPLICATA'] as const;
 
@@ -765,7 +820,7 @@ export interface DonneesDigitalisation {
 /** Convertit un dossier de digitalisation (GET /dossiers) en données exploitables par le renouvellement. */
 function donneesDepuisDossierDigitalisation(d: Record<string, unknown>): DonneesDigitalisation | null {
   const candidat = d.candidat as
-    | { id?: string; numero_candidat?: string; date_naissance?: string; lieu_naissance?: string; nationalite?: string; numero_piece?: string; personne?: { nom?: string; prenom?: string; email?: string; contact?: string } }
+    | { id?: string; numero_candidat?: string; date_naissance?: string; lieu_naissance?: string; nationalite?: string; numero_piece?: string; genre?: string; personne?: { nom?: string; prenom?: string; email?: string; contact?: string } }
     | undefined;
   const candidatId = String(candidat?.id ?? d.candidat_id ?? '');
   if (!candidatId) return null;
@@ -778,6 +833,7 @@ function donneesDepuisDossierDigitalisation(d: Record<string, unknown>): Donnees
     lieu_naissance: candidat?.lieu_naissance,
     nationalite: candidat?.nationalite,
     numero_identite: candidat?.numero_piece,
+    sexe: candidat?.genre,
   };
   const lignes = (Array.isArray(d.data_categorie) ? d.data_categorie : [])
     .map((raw) => {
@@ -833,9 +889,10 @@ async function findDossiersParNumero(numero: string, types: readonly string[]): 
     .filter((x): x is DonneesDigitalisation => !!x);
 }
 
-/** Dernier dossier de digitalisation (fiche / duplicata) portant ce numéro de permis ou d'origine. */
+/** Dossier de digitalisation (fiche / duplicata) portant ce numéro : le dernier transmis, sinon le dernier en cours. */
 export async function findDigitalisationParNumero(numero: string): Promise<DonneesDigitalisation | null> {
-  return (await findDossiersParNumero(numero, TYPES_DIGITALISATION))[0] ?? null;
+  const dossiers = await findDossiersParNumero(numero, TYPES_DIGITALISATION);
+  return dossiers.find((d) => d.transmis) ?? dossiers[0] ?? null;
 }
 
 /** Dernier renouvellement transmis au CNEDDT pour ce permis : ses catégories portent les nouvelles dates. */

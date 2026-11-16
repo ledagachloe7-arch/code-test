@@ -119,6 +119,14 @@ L'interface de connexion utilise la route API **`POST /api/auth/login-direct`**.
 
 ## 5. Journal des Modifications & Optimisations (Changelog)
 
+### [2026-11-04] - Mise à jour (correction d'état civil) et ajustements du renouvellement
+* **Mise à jour** : nouveau type de demande `MISEAJOUR` (seeder `TypeDemandeSeeder`) et parcours court dans *Nouvelle demande* (`MiseAJourSimplifiee`) : numéro de permis → informations du titulaire (dossier de digitalisation, sinon registre) → correction de nom, prénom, date / lieu de naissance, sexe, nationalité → paiement.
+  * Migration `2026_11_04_120000_add_donnees_mise_a_jour_to_dossiers_table` : colonne JSON `dossiers.donnees_mise_a_jour` = `{ champs: { <champ>: { ancienne, nouvelle } }, appliquee, appliquee_le }`.
+  * Serveur (`DossierController`) : champs autorisés `CHAMPS_MISE_A_JOUR` (422 sinon) ; une seule mise à jour non appliquée par numéro de permis (reprise avec les nouvelles corrections, `existing: true`) ; après paiement vérifié, `appliquerMiseAJour()` met à jour `personnes` / `candidats` (idempotent). Le registre n'est jamais modifié.
+  * Pas encore d'envoi CNEDDT ni de récépissé : l'`operation_type` CNEDDT d'une correction reste à confirmer.
+* **Renouvellement** : « digitalisé » = dossier de digitalisation transmis (le registre seul ne suffit plus) ; bouton « Fiche d'enregistrement » retiré de l'encadré « Permis non digitalisé » et des choix de type (Nouvelle demande, création de dossier par étapes).
+* **Paiement simulé** : `PAYNALA_SIMULATION` s'applique maintenant aussi à `checkAndProcessPaymentForDossier` (bouton « Vérifier le paiement »).
+
 ### [2026-11-02] - Renouvellement simplifié des catégories (branche `feat/renouvellement-simplifie`)
 * **Composant/Projet concerné** : frontend (`NouvelleDemandeePage`, nouveau `RenouvellementSimplifie`) et backend (`DossierController`, `CandidatController`).
   * Besoin : renouveler les catégories d'un permis sans recréer de dossier complet ni repasser en biométrie.

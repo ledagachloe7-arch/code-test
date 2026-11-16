@@ -27,7 +27,7 @@ Le bouton « Créer un dossier » de *Gestion dossier* ouvre l'ancien parcours p
 
 | # | Écran | Ce qui se passe | Statut du dossier |
 |---|---|---|---|
-| 1 | Numéro de permis → **Rechercher** | Recherche dans le registre et l'historique (`/change-permis`), puis toutes les catégories du titulaire via son identité. À défaut, recherche dans les dossiers de digitalisation transmis. | — |
+| 1 | Numéro de permis → **Rechercher** | Recherche du **dossier de digitalisation transmis** (fiche / duplicata, statut `DOSSIER ENVOYER`) portant ce numéro : identité, titulaire et catégories viennent de ce dossier. Le registre seul ne suffit pas (voir §2.2). | — |
 | 2 | Onglet **Informations** | Identité + toutes les catégories avec un badge **Expirée / Valide** | — |
 | 3 | Onglet **Catégories à renouveler** | Cases à cocher : **seules C et D sont sélectionnables** (voir §3.0), les C / D expirées sont cochées d'avance. Les autres catégories sont affichées « Non renouvelable ». Pas d'ajout ni de modification de catégorie. | — |
 | 4 | Titulaire | **Candidat existant** retrouvé par nom + prénom + date de naissance. Sinon, mini-formulaire : téléphone (obligatoire), genre, type et n° de pièce, email facultatif. | — |
@@ -38,13 +38,23 @@ Le bouton « Créer un dossier » de *Gestion dossier* ouvre l'ancien parcours p
 
 ### 2.2 Personne non digitalisée (catégories expirées)
 
-Si le numéro ne correspond à aucun permis numérique, un encadré **« Permis non digitalisé »** propose de digitaliser d'abord :
+Une personne n'est **digitalisée** que si la DGTT a toutes ses informations, c'est-à-dire un dossier de digitalisation transmis dans la base principale. Un permis présent seulement dans le registre (`registre_permis`) ou l'historique (`h_permis`) n'est pas digitalisé.
+
+| Résultat de la recherche | Écran |
+|---|---|
+| Digitalisation transmise | Renouvellement (§2.1) |
+| Digitalisation en cours, non transmise | Message : la terminer d'abord |
+| Trouvé au registre / `h_permis` seulement | Encadré **« Permis non digitalisé »** avec le titulaire trouvé |
+| Introuvable | « Permis introuvable dans le registre » |
+
+L'encadré **« Permis non digitalisé »** propose de digitaliser d'abord :
 
 | Bouton | Type de demande | Usage indiqué dans l'application |
 |---|---|---|
-| Fiche d'enregistrement | `FICHEENREGISTREMENT` | Permis vert |
 | Duplicata fiche d'enregistrement | `DUPLICATAFICHEENREGISTREMENT` | Permis vert (duplicata) |
 | Duplicata | `DUPLICATA` | Permis rose |
+
+Le bouton Fiche d'enregistrement a été retiré de cet encadré. Un dossier Fiche d'enregistrement déjà transmis reste reconnu comme digitalisation.
 
 1. Le parcours de digitalisation habituel s'ouvre, **sans modification** : pièces, paiement, biométrie, **récépissé de digitalisation**. Un bandeau rappelle que le renouvellement suit.
 2. Après le transfert à la biométrie, le bouton **« Continuer vers le renouvellement »** ouvre le renouvellement simplifié, avec les catégories et le titulaire du dossier de digitalisation déjà chargés.
@@ -181,7 +191,10 @@ Compte : `admin@permis.local` / `123456`. Page : `http://localhost:3000/eleves/n
 | Une seule catégorie expirée | `2012003100` (Obame Paul) | B expirée en 2022 |
 | Catégorie valide | `2019007300` (Essono David) | Badge « Valide » |
 | Catégories C / D / E | `20033C00003`, `20044D00004`, `20055E00005` | Catégories expirées (registre) |
-| Non digitalisé | `99999X99999` | Encadré « Permis non digitalisé » avec 3 boutons |
+| Non digitalisé (au registre, sans digitalisation) | `20031C00028` (MINTSA David, C), `20042D00029` (KOUMBA Estelle, D) | Encadré « Permis non digitalisé » avec 2 boutons : **Duplicata fiche d'enregistrement** et **Duplicata** |
+| Introuvable | `99999X99999` | « Permis introuvable dans le registre » |
+
+> Depuis la règle « digitalisé = digitalisation transmise », les numéros du registre ci-dessous (et ceux du seeder) affichent l'encadré « Permis non digitalisé » tant qu'aucune digitalisation n'a été transmise pour eux.
 | Anti-doublon | refaire `20022B00002` après validation | « dossier existant repris (aucun doublon créé) » |
 
 **Jeu de test dédié** (`database/seeders/RenouvellementTestSeeder.php`, lignes `h_permis` avec `numero_identite` = `TEST-RN-*`). Relancer avec `php artisan db:seed --class=RenouvellementTestSeeder` : le seeder supprime et recrée uniquement ses lignes. Les dates et les âges sont calculés par rapport au jour du lancement.
@@ -201,6 +214,37 @@ Compte : `admin@permis.local` / `123456`. Page : `http://localhost:3000/eleves/n
 | 3 permis distincts rattachés (B fiche d'enregistrement, C et D duplicatas, provinces différentes) | `20051B77011`, `20112C77011` ou `20178D77011` | ASSOUMOU Pascal, 45 ans | Les 3 catégories affichées quel que soit le numéro saisi ; **C et D cochées**, B « Non renouvelable » ; **5 ans** |
 
 N'importe quel numéro d'un titulaire affiche toutes ses catégories.
+
+**Titulaires digitalisés A à E** (`database/seeders/RenouvellementCompletSeeder.php`, `numero_identite` / `numero_piece` = `TEST-RC-*`). Relancer avec `php artisan db:seed --class=RenouvellementCompletSeeder` : il supprime et recrée uniquement ses données (registre, utilisateur, personne, candidat, dossier DUPLICATA transmis, et les renouvellements faits ensuite sur ces titulaires). Chacun a les 5 catégories A, B, C, D, E et ouvre directement le renouvellement.
+
+Numérotation : `<année><rang><catégorie>88<n° titulaire>`, rang 1 à 5 pour A à E. Pour MAKAYA Jean (n° 001, année 2001) : A `20011A88001`, B `20012B88001`, C `20013C88001`, D `20014D88001`, E `20015E88001`. Les numéros avec X sont `20011X88001` … `20015X88001`. **Chacun de ces numéros affiche les 5 catégories.**
+
+| N° (catégorie C) | Titulaire | Âge | Attendu |
+|---|---|---|---|
+| `20013C88001` | MAKAYA Jean | 45 | C et D, **5 ans** |
+| `20023C88002` | NGOMA Sylvie | 62 | C et D, **2 ans** |
+| `20033C88003` | BOUSSOUGOU Patrick | 59 | Limite : C et D, **5 ans** |
+| `20043C88004` | MOUNDOUNGA Alice | 60 | Limite : C et D, **2 ans** |
+| `20053C88005` | EYENE Hervé | 38 | C seule (D valide), 5 ans |
+| `20063C88006` | ALLOGO Brigitte | 51 | D seule (C valide), 5 ans |
+| `20073C88007` | OBAME Thierry | 33 | Tout valide : rien à renouveler |
+| `20083C88008` | NZAMBA Pauline | 70 | Expirées depuis 9 ans, 2 ans |
+| `20093C88009` | MENGUE Rodrigue | 27 | A, B expirées, C, D valides : rien à renouveler |
+| `20103C88010` | KOUMBA Georges | 56 | C expirée hier, D expire dans 14 jours : C seule |
+| `20113C88011` | BIYOGHE Nadège | 44 | C et D, 5 ans |
+| `20123C88012` | MBOUMBA Christian | 65 | C et D expirées, A, B, E valides : 2 ans |
+| `20133C88013` | NDZIGOU Estelle | 35 | C et D, 5 ans |
+| `20143C88014` | ONDIMBA Serge | 48 | D seule, 5 ans |
+| `20003C88015` | MOUSSOUNDA Irène | 61 | C et D, 2 ans |
+| `20013C88016` | ESSONE Marc | 29 | C et D, 5 ans |
+| `20023C88017` | NKOGHE Laure | 53 | C et D, 5 ans |
+| `20033C88018` | IVANGA Roger | 74 | C seule, 2 ans |
+| `20043C88019` | MAGANGA Josiane | 42 | Seule E expirée : rien à renouveler |
+| `20053C88020` | OYANE Didier | 58 | C et D, 5 ans |
+| `20063C88021` | LEKOGO Chantal | 66 | C et D, 2 ans |
+| `20073C88022` | NDONG Ulrich | 31 | C et D, 5 ans |
+
+**Recherche par numéro (`GET /api/dossiers?numero_permis=`)** : compare le numéro du dossier, le numéro d'origine **et** les numéros des catégories (`data_categorie.codification_code`), tirets ignorés. Un numéro avec X en 6ᵉ position retrouve la catégorie au même numéro avec une lettre (`motifNumeroPermis()` dans `DossierController`).
 
 **Limites en local :**
 - Paynala et la CNEDDT ne sont pas configurés en local. Pour dérouler tout le parcours, activer le **mode simulation** dans `projet04-backend-permis-conduire/.env` :

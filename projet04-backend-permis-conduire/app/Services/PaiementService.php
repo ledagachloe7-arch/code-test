@@ -112,7 +112,10 @@ class PaiementService
             ];
         }
 
-        $result = $this->paynalaService->lookupPayment($dossier->code_paiement);
+        // Simulation locale (PAYNALA_SIMULATION=true) : réponse Paynala « payé », jamais hors environnement local
+        $result = (config('services.paynala.simulation') && app()->environment('local'))
+            ? $this->reponsePaynalaSimulee($dossier)
+            : $this->paynalaService->lookupPayment($dossier->code_paiement);
 
         if (!is_array($result) || (($result['success'] ?? false) !== true)) {
             return [

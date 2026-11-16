@@ -75,6 +75,7 @@ import { useAppStore } from '../../../store';
 import {
   FinalisationSection,
   PiecesJustificativesCard,
+  MiseAJourSimplifiee,
   RenouvellementSimplifie,
   SubmitActionBar,
   SummaryRecapCards,
@@ -396,6 +397,7 @@ function formatTypeDemandeDisplayName(name?: string): string {
   const raw = String(name ?? '').trim();
   const normalized = normalizeEntityKey(raw);
   if (normalized === 'DUPLICATAFICHEENREGISTREMENT') return "DUPLICATA FICHE D'ENREGISTREMENT";
+  if (normalized === 'MISEAJOUR') return 'MISE À JOUR';
   return raw;
 }
 
@@ -409,6 +411,9 @@ function getTypeDemandeSubtitle(name?: string, code?: string): string {
   }
   if (key.includes('DUPLICATA')) {
     return 'Duplicata: concerne les permis roses (permis nationaux).';
+  }
+  if (key === 'MISEAJOUR') {
+    return 'Correction du nom, de la date ou du lieu de naissance, du sexe…';
   }
   return 'Type de carte de permis';
 }
@@ -1665,6 +1670,9 @@ const NouvelleDemandeePage: React.FC = () => {
     selectedTypeDemandeKey === 'FICHEENREGISTREMENT';
   /** Renouvellement : parcours simplifié (numéro → catégories → paiement → CNEDDT), hors édition d'un dossier existant. */
   const isRenouvellementSimplifie = selectedTypeDemandeKey === 'RENOUVELLEMENT' && !isEditingExistingDossier;
+  /** Mise à jour : même parcours court (numéro → informations à corriger → paiement). */
+  const isMiseAJourSimplifiee = selectedTypeDemandeKey === 'MISEAJOUR' && !isEditingExistingDossier;
+  const isParcoursSimplifie = isRenouvellementSimplifie || isMiseAJourSimplifiee;
   const isTypeDigitalisation = (TYPES_DIGITALISATION as readonly string[]).includes(selectedTypeDemandeKey);
 
   const handleConfirmPermisSelection = useCallback(() => {
@@ -2552,7 +2560,7 @@ const NouvelleDemandeePage: React.FC = () => {
       >
     <Container maxWidth={false} sx={{ py: 3, px: { xs: 2, md: 3 } }}>
       <Grid container spacing={2.5} alignItems="flex-start">
-        <Grid item xs={12} lg={isRenouvellementSimplifie ? 12 : 8.5}>
+        <Grid item xs={12} lg={isParcoursSimplifie ? 12 : 8.5}>
       {/* Header */}
       <Box
         sx={{
@@ -2585,7 +2593,7 @@ const NouvelleDemandeePage: React.FC = () => {
       </Box>
 
       {/* Progress */}
-      {!isRenouvellementSimplifie && (
+      {!isParcoursSimplifie && (
       <Paper variant="outlined" sx={{ p: 1.5, mb: 2.5, bgcolor: alpha(muiTheme.palette.primary.main, 0.04), borderColor: alpha(DEMANDE_THEME_NAVY, 0.18) }}>
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
           {[
@@ -2647,7 +2655,10 @@ const NouvelleDemandeePage: React.FC = () => {
             ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}><CircularProgress size={24} /></Box>
             : (
               <Grid container spacing={1.5}>
-                {typesDemande.map((td) => {
+                {typesDemande
+                  // Fiche d'enregistrement retirée des choix (sauf dossier existant déjà de ce type)
+                  .filter((td) => state.type_demande_id === td.id || normalizeEntityKey(td.code || td.name || '') !== 'FICHEENREGISTREMENT')
+                  .map((td) => {
                   const selected = state.type_demande_id === td.id;
                   const demandeCode = (td.code ?? '').toString().trim().toUpperCase();
                   const displayTypeDemandeName = formatTypeDemandeDisplayName(td.name);
@@ -2738,6 +2749,12 @@ const NouvelleDemandeePage: React.FC = () => {
           canBypassPaiement={canBypassVerifPaiementDev}
           onDigitaliser={handleDigitaliserPuisRenouveler}
           dossierDigitalisationId={dossierDigitalisationPourRenouvellement}
+        />
+      ) : isMiseAJourSimplifiee ? (
+        <MiseAJourSimplifiee
+          key={state.type_demande_id}
+          typeDemandeId={state.type_demande_id}
+          typeDemandeName={state.type_demande_name}
         />
       ) : (
       <>
@@ -3660,7 +3677,7 @@ const NouvelleDemandeePage: React.FC = () => {
       </>
       )}
         </Grid>
-        {!isRenouvellementSimplifie && (
+        {!isParcoursSimplifie && (
         <Grid item xs={12} lg={3.5} sx={{ alignSelf: { xs: 'stretch', lg: 'flex-start' }, minWidth: 0 }}>
           <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column' }}>
             <SummaryRecapCards

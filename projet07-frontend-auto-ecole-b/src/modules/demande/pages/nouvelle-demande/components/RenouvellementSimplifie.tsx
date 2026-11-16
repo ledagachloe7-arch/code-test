@@ -27,7 +27,7 @@ import {
   chargerDossierAvecCategories,
   createCandidatPourRenouvellement,
   createDossierRenouvellement,
-  findCandidatPourPermis,
+  fetchStatutEtCodePaiement,
   findDigitalisationParNumero,
   findRenouvellementTransmisParNumero,
   demandeService,
@@ -54,7 +54,6 @@ interface RenouvellementSimplifieProps {
 const TYPES_PIECE_CANDIDAT = ['CNI', 'Passeport', 'Titre de séjour', 'Autre'];
 
 const CHOIX_DIGITALISATION = [
-  { cle: 'FICHEENREGISTREMENT', label: "Fiche d'enregistrement", aide: 'Permis vert' },
   { cle: 'DUPLICATAFICHEENREGISTREMENT', label: "Duplicata fiche d'enregistrement", aide: 'Permis vert (duplicata)' },
   { cle: 'DUPLICATA', label: 'Duplicata', aide: 'Permis rose' },
 ];
@@ -106,16 +105,6 @@ async function avecDernierRenouvellement(liste: PermisApiData[], numero: string)
   });
 }
 
-async function fetchStatutEtCodePaiement(dossierId: string): Promise<{ statut: string; code: string }> {
-  const res = await axiosClient.get(`/dossiers/${dossierId}`);
-  const d = (res.data?.data ?? res.data) as Record<string, unknown>;
-  const attrs = d?.attributes as Record<string, unknown> | undefined;
-  return {
-    statut: String(d?.statut ?? attrs?.statut ?? ''),
-    code: String(d?.code_paiement ?? attrs?.code_paiement ?? '').trim(),
-  };
-}
-
 const RenouvellementSimplifie: React.FC<RenouvellementSimplifieProps> = ({
   typeDemandeId,
   typeDemandeName,
@@ -134,8 +123,9 @@ const RenouvellementSimplifie: React.FC<RenouvellementSimplifieProps> = ({
   const [principal, setPrincipal] = useState<PermisApiData | null>(null);
   const [selection, setSelection] = useState<string[]>([]);
   const [onglet, setOnglet] = useState(0);
-  /** Recherche infructueuse : la personne doit d'abord être digitalisée. */
+  /** Permis présent au registre mais sans digitalisation transmise : la personne doit d'abord être digitalisée. */
   const [nonDigitalise, setNonDigitalise] = useState(false);
+  const [titulaireRegistre, setTitulaireRegistre] = useState<PermisApiData | null>(null);
   /** Numéro de permis porté par le dossier de renouvellement (celui du dossier de digitalisation le cas échéant). */
   const [numeroDossier, setNumeroDossier] = useState('');
 
@@ -180,6 +170,7 @@ const RenouvellementSimplifie: React.FC<RenouvellementSimplifieProps> = ({
     setSelection([]);
     setOnglet(0);
     setNonDigitalise(false);
+    setTitulaireRegistre(null);
     setNumeroDossier('');
     setCandidat(null);
     setDossier(null);
@@ -229,60 +220,36 @@ const RenouvellementSimplifie: React.FC<RenouvellementSimplifieProps> = ({
     setError(null);
     setInfo(null);
     setNonDigitalise(false);
+    setTitulaireRegistre(null);
     try {
-      const trouve = await demandeService.verifyPermisParNumero(numero);
-      if (!trouve) {
-        // Pas dans le registre : peut-être digitalisé via un dossier fiche / duplicata
-        const dig = await findDigitalisationParNumero(numero).catch(() => null);
-        if (dig && !dig.transmis) {
-          setError(
-            "Une digitalisation est en cours pour ce permis mais n'a pas encore été transmise à la biométrie. Terminez-la avant de renouveler.",
-          );
+      // Digitalisé = dossier de digitalisation (fiche / duplicata) transmis : la DGTT a alors toutes les informations.
+      // Le registre et h_permis disent seulement que le permis existe.
+      const dig = await findDigitalisationParNumero(numero);
+      if (dig?.transmis) {
+        if (dig.categories.length === 0) {
+          setError('Le dossier de digitalisation de ce permis ne contient aucune catégorie.');
           return;
         }
-        if (dig && dig.categories.length > 0) {
-          appliquerDigitalisation({ ...dig, categories: await avecDernierRenouvellement(dig.categories, dig.numeroPermis) });
-          return;
+        const liste = await avecDernierRenouvellement(dig.categories, dig.numeroPermis);
+        if (liste.some((p) => p.renouvele)) {
+          setInfo('Ce permis a déjà été renouvelé : les dates affichées sont celles du dernier renouvellement.');
         }
-        setNonDigitalise(true);
+        appliquerDigitalisation({ ...dig, categories: liste });
         return;
       }
-      setNumeroDossier(String(trouve.numero_permis ?? numero));
-      let parIdentite: PermisApiData[] = [];
-      try {
-        parIdentite = await demandeService.searchPermisParIdentite(
-          String(trouve.nom ?? ''),
-          String(trouve.prenom ?? ''),
-          fmtDate(trouve.date_naissance),
+      if (dig) {
+        setError(
+          "Une digitalisation est en cours pour ce permis mais n'a pas encore été transmise à la biométrie. Terminez-la avant de renouveler.",
         );
-      } catch {
-        parIdentite = [];
+        return;
       }
-      const parNumero = new Map<string, PermisApiData>();
-      [...parIdentite, trouve].forEach((p) => {
-        const k = normalizeNumero(p.numero_permis);
-        if (k && !parNumero.has(k)) parNumero.set(k, p);
-      });
-      const liste = await avecDernierRenouvellement(Array.from(parNumero.values()), String(trouve.numero_permis ?? numero));
-      if (liste.some((p) => p.renouvele)) {
-        setInfo('Ce permis a déjà été renouvelé : les dates affichées sont celles du dernier renouvellement.');
+      const trouve = await demandeService.verifyPermisParNumero(numero);
+      if (!trouve) {
+        setError('Permis introuvable dans le registre. Vérifiez le numéro saisi.');
+        return;
       }
-      setPermisList(liste);
-      setPrincipal(trouve);
-      // Par défaut : les catégories C / D expirées sont à renouveler
-      setSelection(selectionParDefaut(liste));
-
-      const existant = await findCandidatPourPermis(trouve).catch(() => null);
-      setCandidat(existant);
-      if (!existant) {
-        const sexe = String(trouve.sexe ?? '').toUpperCase().trim();
-        setNouveauCandidat((prev) => ({
-          ...prev,
-          numero_piece: String(trouve.numero_identite ?? '').trim(),
-          genre: sexe === 'M' || sexe === 'F' ? sexe : prev.genre,
-        }));
-      }
-      setEtape('verification');
+      setTitulaireRegistre(trouve);
+      setNonDigitalise(true);
     } catch (err) {
       setError(errorMessage(err, 'Erreur lors de la recherche du permis.'));
     } finally {
@@ -478,7 +445,14 @@ const RenouvellementSimplifie: React.FC<RenouvellementSimplifieProps> = ({
             Permis non digitalisé
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Aucun permis numérique ne correspond à ce numéro. Digitalisez-le d'abord : après le transfert à la biométrie,
+            {titulaireRegistre && (
+              <>
+                Permis trouvé au registre ({[titulaireRegistre.nom, titulaireRegistre.prenom].filter(Boolean).join(' ')}
+                {titulaireRegistre.categorie ? `, catégorie ${titulaireRegistre.categorie}` : ''}), mais la DGTT n'a pas encore
+                sa digitalisation.{' '}
+              </>
+            )}
+            Digitalisez-le d'abord : après le transfert à la biométrie,
             un bouton « Continuer vers le renouvellement » permettra de renouveler les catégories sans ressaisie.
             Chaque étape a son paiement et son récépissé.
           </Typography>

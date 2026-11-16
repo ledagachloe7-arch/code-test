@@ -65,9 +65,9 @@ export const TypeDemandeStep: React.FC<TypeDemandeStepProps> = ({
     );
   }
 
-  // Filtrer pour exclure NOUVEAUPERMIS
+  // Filtrer pour exclure NOUVEAUPERMIS et FICHEENREGISTREMENT
   const filteredTypeDemandes = typeDemandes.filter(
-    (typeDemande) => typeDemande.name.toUpperCase() !== 'NOUVEAUPERMIS'
+    (typeDemande) => !['NOUVEAUPERMIS', 'FICHEENREGISTREMENT'].includes(typeDemande.name.toUpperCase())
   );
 
   // Afficher un toast quand un type de demande est sélectionné
