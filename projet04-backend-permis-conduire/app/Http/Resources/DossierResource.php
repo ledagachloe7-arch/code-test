@@ -28,7 +28,6 @@ class DossierResource extends JsonResource
             'centre_id' => $this->centre_id,
             /** Données catégorie (JSON nullable) : objet ou tableau libre, stocké en base en format JSON. */
             'data_categorie' => $this->data_categorie,
-            'donnees_mise_a_jour' => $this->donnees_mise_a_jour,
             'is_locked' => $this->is_locked ?? false,
             'opened_by' => $this->opened_by,
             'opened_at' => $this->opened_at?->toIso8601String(),

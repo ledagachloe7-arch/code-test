@@ -68,19 +68,6 @@ use App\Http\Helpers\CentreScopeHelper;
 #[Group('Dossiers', description: 'Gestion des dossiers (expired, suspended, province_id, centre_id, data_categorie en JSON nullable). Si le dossier a un centre_id, province_id est aligné sur la province liée au centre (parent_id du référentiel centre). Restriction centre : un agent (utilisateur avec centre_id, hors ROLE_CANDIDAT) ne voit et ne peut traiter que les dossiers de son centre ; les rôles admin reconnus (bypassesDossierCentreScope) voient tous les centres ; 403 si accès à un dossier d\'un autre centre pour un agent non admin. **Suivi remise carte au centre** : `GET /dossiers/envoi-biometrie` liste les dossiers dont le statut est l’un de **DOSSIER ENVOYER** (filtre liste), **CARTE_DISPONIBLE_AU_CENTRE**, **CARTE_REMIS_AU_CANDIDAT** ; `POST /dossiers/{dossier}/notifier-carte-disponible` (prérequis **`DOSSIER ENVOYER`**, voir `Dossier::STATUT_DOSSIER_ENVOYER`) envoie le SMS Airtel au candidat et passe au statut CARTE_DISPONIBLE_AU_CENTRE si l\'envoi réussit ; `POST /dossiers/{dossier}/carte-remise-candidat` passe de CARTE_DISPONIBLE_AU_CENTRE à CARTE_REMIS_AU_CANDIDAT.')]
 class DossierController extends Controller
 {
-    /** Catégories pouvant faire l'objet d'un renouvellement (règle DGTT actuelle). */
-    private const CATEGORIES_RENOUVELABLES = ['C', 'D'];
-
-    /** Mise à jour : champ corrigeable => [relation du candidat ('personne' ou 'candidat'), colonne]. */
-    private const CHAMPS_MISE_A_JOUR = [
-        'nom' => ['personne', 'nom'],
-        'prenom' => ['personne', 'prenom'],
-        'date_naissance' => ['candidat', 'date_naissance'],
-        'lieu_naissance' => ['candidat', 'lieu_naissance'],
-        'sexe' => ['candidat', 'genre'],
-        'nationalite' => ['candidat', 'nationalite'],
-    ];
-
     protected DossierService $dossierService;
     protected $alfresco;
     protected $paynalaService;
@@ -160,23 +147,6 @@ class DossierController extends Controller
 
             if ($request->has('centre_id')) {
                 $query->where('centre_id', $request->centre_id);
-            }
-
-            // Renouvellement : retrouver un dossier de digitalisation par numéro de permis, tirets ignorés.
-            // N'importe quel numéro du titulaire convient : numéro du dossier, numéro d'origine, ou numéro d'une
-            // de ses catégories (data_categorie.codification_code). Un numéro « X » (fiche d'enregistrement,
-            // ex. 20012X88001) retrouve la catégorie au même numéro avec une lettre (20012B88001).
-            if ($request->filled('numero_permis')) {
-                $motif = $this->motifNumeroPermis((string) $request->numero_permis);
-                if ($motif !== null) {
-                    $query->where(fn($q) => $q
-                        ->whereRaw("UPPER(REPLACE(COALESCE(numero_permis, ''), '-', '')) ~ ?", ['^' . $motif . '$'])
-                        ->orWhereRaw("UPPER(REPLACE(COALESCE(numero_origine_permis, ''), '-', '')) ~ ?", ['^' . $motif . '$'])
-                        ->orWhereRaw(
-                            "UPPER(REPLACE(COALESCE(data_categorie::text, ''), '-', '')) ~ ?",
-                            ['(^|[^0-9A-Z])' . $motif . '([^0-9A-Z]|$)']
-                        ));
-                }
             }
 
             CentreScopeHelper::applyCentreScopeToDossiersQuery($query);
@@ -576,64 +546,6 @@ class DossierController extends Controller
 
             if (!empty($data['centre_id'])) {
                 $this->applyProvinceIdFromCentre($data, $data['centre_id']);
-            }
-
-            // Renouvellement : un seul dossier en cours par numéro de permis (évite les doublons
-            // en cas de double clic ou de reprise). On renvoie le dossier existant non encore transmis.
-            $nonRenouvelables = $this->categoriesNonRenouvelables($data);
-            if ($nonRenouvelables !== []) {
-                DB::rollBack();
-
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Seules les catégories ' . implode(' et ', self::CATEGORIES_RENOUVELABLES)
-                        . ' peuvent être renouvelées (refusé : ' . implode(', ', $nonRenouvelables) . ').',
-                ], 422);
-            }
-
-            $renouvellementEnCours = $this->findRenouvellementEnCours($data);
-            if ($renouvellementEnCours) {
-                DB::rollBack();
-
-                return response()->json([
-                    'success' => true,
-                    'existing' => true,
-                    'message' => 'Un renouvellement est déjà en cours pour ce permis : le dossier existant est repris.',
-                    'data' => new DossierResource($renouvellementEnCours->load(['candidat.personne', 'typeDemande', 'referentiel', 'province', 'centre'])),
-                ], 200);
-            }
-
-            // Mise à jour : seuls les champs d'état civil connus, et un seul dossier non appliqué par numéro de permis
-            // (le dossier existant est repris avec les nouvelles corrections).
-            if ($this->estTypeDemande($data['type_demande_id'] ?? null, 'MISEAJOUR')) {
-                $inconnus = array_diff(array_keys($data['donnees_mise_a_jour']['champs'] ?? []), array_keys(self::CHAMPS_MISE_A_JOUR));
-                if (empty($data['donnees_mise_a_jour']['champs']) || $inconnus !== []) {
-                    DB::rollBack();
-
-                    return response()->json([
-                        'success' => false,
-                        'message' => $inconnus !== []
-                            ? 'Champs non modifiables : ' . implode(', ', $inconnus) . '.'
-                            : 'Indiquez au moins un champ à corriger.',
-                    ], 422);
-                }
-                $data['donnees_mise_a_jour'] = ['champs' => $data['donnees_mise_a_jour']['champs'], 'appliquee' => false];
-
-                $miseAJourEnCours = $this->findMiseAJourEnCours($data);
-                if ($miseAJourEnCours) {
-                    $miseAJourEnCours->update(['donnees_mise_a_jour' => $data['donnees_mise_a_jour']]);
-                    DB::commit();
-                    Cache::tags(['dossiers'])->flush();
-
-                    return response()->json([
-                        'success' => true,
-                        'existing' => true,
-                        'message' => 'Une mise à jour est déjà en cours pour ce permis : le dossier existant est repris avec ces corrections.',
-                        'data' => new DossierResource($miseAJourEnCours->load(['candidat.personne', 'typeDemande', 'referentiel', 'province', 'centre'])),
-                    ], 200);
-                }
-            } else {
-                unset($data['donnees_mise_a_jour']);
             }
 
             $dossier = Dossier::create($data);
@@ -1413,27 +1325,14 @@ class DossierController extends Controller
                 continue;
             }
 
-            // Renouvellement déjà transmis : ne pas renvoyer au CNEDDT (éviterait un doublon de catégories).
-            if (($typeDemandeNamesById[$typeDemandeId] ?? null) === 'RENOUVELLEMENT'
-                && $dossier->statut === Dossier::STATUT_DOSSIER_ENVOYER) {
-                $skipped[] = ['dossier_id' => $dossierId, 'reason' => 'Renouvellement déjà transmis au CNEDDT.'];
-                continue;
-            }
-
-            // Filet de sécurité : nouvelles dates calculées si elles ne l'ont pas été à la vérification du paiement.
-            $this->appliquerNouvellesDatesRenouvellement($dossier);
-
             $payload = $this->buildPayloadForTransfert($dossier, $typeDemandeId, $typeDemandeNamesById);
             if ($payload === null) {
                 $skipped[] = ['dossier_id' => $dossierId, 'reason' => 'Impossible de construire le payload (données manquantes).'];
                 continue;
             }
 
-            // Renouvellement : pas de passage en biométrie, donc pas d'email de convocation biométrique.
-            if (($typeDemandeNamesById[$typeDemandeId] ?? null) !== 'RENOUVELLEMENT') {
-                $email = $singleEmailOverride ?? $dossier->candidat?->personne?->email;
-                $this->queueBiometrieEmailForDossier($dossier, $email);
-            }
+            $email = $singleEmailOverride ?? $dossier->candidat?->personne?->email;
+            $this->queueBiometrieEmailForDossier($dossier, $email);
 
             $toSend[] = ['dossier_id' => $dossierId, 'payload' => $payload];
         }
@@ -1484,9 +1383,7 @@ class DossierController extends Controller
                 Log::warning('[SMS] Transfert CNEDDT : pas de numéro pour le candidat', ['dossier_id' => $dossierId]);
                 continue;
             }
-            $msg = ($typeDemandeNamesById[$dossier->type_demande_id] ?? null) === 'RENOUVELLEMENT'
-                ? 'DGTT: Votre demande de renouvellement a été transmise au CNEDDT.'
-                : 'DGTT: Votre dossier a été transmis au CNEDDT pour la prise des empreintes biométriques.';
+            $msg = 'DGTT: Votre dossier a été transmis au CNEDDT pour la prise des empreintes biométriques.';
             if ($shortcode !== '') {
                 $msg .= ' Code dossier: ' . $shortcode . '.';
             }
@@ -1717,180 +1614,6 @@ class DossierController extends Controller
     /**
      * Code type permis pour le payload CNEDDT : formation (nouveau permis) ou référentiel / data_categorie (autres opérations).
      */
-    /**
-     * Dossier RENOUVELLEMENT non encore transmis au CNEDDT pour le même numéro de permis (tirets ignorés).
-     *
-     * @param  array<string, mixed>  $data  Données validées du dossier à créer
-     */
-    private function findRenouvellementEnCours(array $data): ?Dossier
-    {
-        $typeDemandeId = $data['type_demande_id'] ?? null;
-        $numeroPermis = strtoupper(str_replace('-', '', trim((string) ($data['numero_permis'] ?? ''))));
-        if (!$typeDemandeId || $numeroPermis === '') {
-            return null;
-        }
-        if (TypeDemande::where('id', $typeDemandeId)->value('name') !== 'RENOUVELLEMENT') {
-            return null;
-        }
-
-        return Dossier::where('type_demande_id', $typeDemandeId)
-            ->whereRaw("UPPER(REPLACE(numero_permis, '-', '')) = ?", [$numeroPermis])
-            ->where(fn($q) => $q->whereNull('statut')->orWhere('statut', '!=', Dossier::STATUT_DOSSIER_ENVOYER))
-            ->latest()
-            ->first();
-    }
-
-    /**
-     * Expression régulière PostgreSQL d'un numéro de permis saisi : majuscules, sans tirets ni caractères spéciaux.
-     * Un « X » en 6e position (numéro de fiche d'enregistrement) accepte n'importe quelle lettre de catégorie.
-     */
-    private function motifNumeroPermis(string $saisie): ?string
-    {
-        $numero = preg_replace('/[^0-9A-Z]/', '', strtoupper($saisie));
-        if ($numero === '') {
-            return null;
-        }
-        if (preg_match('/^(\d{5})X(.+)$/', $numero, $m)) {
-            return $m[1] . '[A-Z]' . $m[2];
-        }
-
-        return $numero;
-    }
-
-    private function estTypeDemande(?string $typeDemandeId, string $name): bool
-    {
-        return $typeDemandeId !== null && TypeDemande::where('id', $typeDemandeId)->value('name') === $name;
-    }
-
-    /**
-     * Dossier MISEAJOUR dont les corrections ne sont pas encore appliquées, pour le même numéro de permis (tirets ignorés).
-     *
-     * @param  array<string, mixed>  $data  Données validées du dossier à créer
-     */
-    private function findMiseAJourEnCours(array $data): ?Dossier
-    {
-        $numeroPermis = strtoupper(str_replace('-', '', trim((string) ($data['numero_permis'] ?? ''))));
-        if ($numeroPermis === '') {
-            return null;
-        }
-
-        return Dossier::where('type_demande_id', $data['type_demande_id'])
-            ->whereRaw("UPPER(REPLACE(numero_permis, '-', '')) = ?", [$numeroPermis])
-            ->get()
-            ->first(fn(Dossier $d) => empty($d->donnees_mise_a_jour['appliquee']));
-    }
-
-    /**
-     * Mise à jour : applique les corrections d'état civil au candidat après paiement vérifié.
-     * Le registre (base 1) n'est jamais modifié ; l'ancienne valeur reste dans `donnees_mise_a_jour`.
-     * Idempotent : une mise à jour déjà appliquée n'est pas rejouée.
-     */
-    private function appliquerMiseAJour(Dossier $dossier): void
-    {
-        $donnees = $dossier->donnees_mise_a_jour;
-        if (empty($donnees['champs']) || !empty($donnees['appliquee']) || !$dossier->candidat) {
-            return;
-        }
-
-        $cibles = ['candidat' => $dossier->candidat, 'personne' => $dossier->candidat->personne];
-        foreach ($donnees['champs'] as $champ => $valeurs) {
-            [$relation, $colonne] = self::CHAMPS_MISE_A_JOUR[$champ] ?? [null, null];
-            if ($relation && $cibles[$relation]) {
-                $cibles[$relation]->{$colonne} = $valeurs['nouvelle'];
-            }
-        }
-
-        DB::transaction(function () use ($cibles, $dossier, $donnees) {
-            $cibles['candidat']->save();
-            $cibles['personne']?->save();
-            $dossier->forceFill(['donnees_mise_a_jour' => array_merge($donnees, [
-                'appliquee' => true,
-                'appliquee_le' => now()->toDateTimeString(),
-            ])])->save();
-        });
-        Cache::tags(['dossiers'])->flush();
-        Log::info('Mise à jour : corrections appliquées', [
-            'dossier_id' => $dossier->id,
-            'champs' => array_keys($donnees['champs']),
-        ]);
-    }
-
-    /**
-     * Classes d'un dossier RENOUVELLEMENT qui ne sont pas renouvelables (vide si tout est permis ou autre type).
-     *
-     * @param  array<string, mixed>  $data  Données validées du dossier à créer
-     * @return list<string>
-     */
-    private function categoriesNonRenouvelables(array $data): array
-    {
-        $typeDemandeId = $data['type_demande_id'] ?? null;
-        if (!$typeDemandeId || empty($data['data_categorie']) || !is_array($data['data_categorie'])) {
-            return [];
-        }
-        if (TypeDemande::where('id', $typeDemandeId)->value('name') !== 'RENOUVELLEMENT') {
-            return [];
-        }
-
-        $refusees = [];
-        foreach ($data['data_categorie'] as $cat) {
-            $ligne = is_string($cat) ? json_decode($cat, true) : $cat;
-            $classe = strtoupper(trim((string) (is_array($ligne) ? ($ligne['classe'] ?? '') : '')));
-            if ($classe !== '' && !in_array($classe, self::CATEGORIES_RENOUVELABLES, true)) {
-                $refusees[] = $classe;
-            }
-        }
-
-        return array_values(array_unique($refusees));
-    }
-
-    /**
-     * Renouvellement : nouvelles dates de validité des catégories, à partir du jour du paiement.
-     * Durée : 2 ans si le titulaire a plus de 59 ans, 5 ans sinon.
-     * Idempotent : une catégorie déjà marquée `renouvele` n'est pas recalculée (ancienne validité conservée).
-     */
-    private function appliquerNouvellesDatesRenouvellement(Dossier $dossier): void
-    {
-        if (empty($dossier->data_categorie) || !is_array($dossier->data_categorie)) {
-            return;
-        }
-        if (TypeDemande::where('id', $dossier->type_demande_id)->value('name') !== 'RENOUVELLEMENT') {
-            return;
-        }
-
-        $naissance = $dossier->candidat?->date_naissance;
-        $dureeAns = ($naissance && $naissance->age > 59) ? 2 : 5;
-        $debut = now()->startOfDay();
-        $fin = $debut->copy()->addYears($dureeAns);
-
-        $modifie = false;
-        $lignes = [];
-        foreach ($dossier->data_categorie as $cat) {
-            $ligne = is_string($cat) ? json_decode($cat, true) : $cat;
-            $classe = strtoupper(trim((string) (is_array($ligne) ? ($ligne['classe'] ?? '') : '')));
-            if (!is_array($ligne) || !empty($ligne['renouvele']) || !in_array($classe, self::CATEGORIES_RENOUVELABLES, true)) {
-                $lignes[] = $cat;
-                continue;
-            }
-            $ligne['ancienne_validite'] = $ligne['jusqu_au'] ?? null;
-            $ligne['valable_du'] = $debut->toDateString();
-            $ligne['jusqu_au'] = $fin->toDateString();
-            $ligne['duree_ans'] = $dureeAns;
-            $ligne['renouvele'] = true;
-            $lignes[] = is_string($cat) ? json_encode($ligne, JSON_UNESCAPED_UNICODE) : $ligne;
-            $modifie = true;
-        }
-
-        if ($modifie) {
-            $dossier->forceFill(['data_categorie' => $lignes, 'date_expiration' => $fin->toDateString()])->save();
-            Cache::tags(['dossiers'])->flush();
-            Log::info('Renouvellement : nouvelles dates appliquées', [
-                'dossier_id' => $dossier->id,
-                'duree_ans' => $dureeAns,
-                'jusqu_au' => $fin->toDateString(),
-            ]);
-        }
-    }
-
     private function resolveTypePermisCodeForTransfert(Dossier $dossier, string $operationType): ?string
     {
         if ($operationType === 'NOUVEAUPERMIS') {
@@ -2101,11 +1824,6 @@ class DossierController extends Controller
         }
 
         $result = $this->paynalaService->checkAndProcessPaymentForDossier($dossier->load('candidat.personne'));
-
-        if (($result['paid'] ?? false) === true) {
-            $this->appliquerNouvellesDatesRenouvellement($dossier->fresh(['candidat']));
-            $this->appliquerMiseAJour($dossier->fresh(['candidat.personne']));
-        }
 
         return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
     }

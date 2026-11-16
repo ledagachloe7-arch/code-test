@@ -56,7 +56,7 @@ import { ROUTES } from '../../../shared/constants';
 import { buildNumeroPermis } from '../../cnepc/forms/utils';
 import type { NumeroPermisParts, PermisFormatType } from '../../cnepc/forms/types';
 import { demandeReducer, initialDemandeState } from '../types';
-import { demandeService, TYPES_DIGITALISATION, type PermisApiData } from '../services/demande.service';
+import { demandeService, type PermisApiData } from '../services/demande.service';
 import axiosClient from '../../../shared/utils/axiosConfig';
 import { circuitSuiviService, type EtapeCircuit } from '../../reception/services/circuit-suivi.service';
 import { isEtapePaiementCircuit } from '../../reception/utils/etapeHelpers';
@@ -75,8 +75,6 @@ import { useAppStore } from '../../../store';
 import {
   FinalisationSection,
   PiecesJustificativesCard,
-  MiseAJourSimplifiee,
-  RenouvellementSimplifie,
   SubmitActionBar,
   SummaryRecapCards,
   type RecapLines,
@@ -397,7 +395,6 @@ function formatTypeDemandeDisplayName(name?: string): string {
   const raw = String(name ?? '').trim();
   const normalized = normalizeEntityKey(raw);
   if (normalized === 'DUPLICATAFICHEENREGISTREMENT') return "DUPLICATA FICHE D'ENREGISTREMENT";
-  if (normalized === 'MISEAJOUR') return 'MISE À JOUR';
   return raw;
 }
 
@@ -411,9 +408,6 @@ function getTypeDemandeSubtitle(name?: string, code?: string): string {
   }
   if (key.includes('DUPLICATA')) {
     return 'Duplicata: concerne les permis roses (permis nationaux).';
-  }
-  if (key === 'MISEAJOUR') {
-    return 'Correction du nom, de la date ou du lieu de naissance, du sexe…';
   }
   return 'Type de carte de permis';
 }
@@ -742,10 +736,6 @@ const NouvelleDemandeePage: React.FC = () => {
   const [paiementVerifie, setPaiementVerifie] = useState(false);
   const [sendingToCNEDDT, setSendingToCNEDDT] = useState(false);
   const [sentToCNEDDT, setSentToCNEDDT] = useState(false);
-  /** Digitalisation lancée depuis l'écran Renouvellement (personne non digitalisée, catégories à renouveler ensuite). */
-  const [renouvellementApresDigitalisation, setRenouvellementApresDigitalisation] = useState(false);
-  /** Dossier de digitalisation transmis, repris par le renouvellement simplifié. */
-  const [dossierDigitalisationPourRenouvellement, setDossierDigitalisationPourRenouvellement] = useState<string | null>(null);
   const [telechargeRecepissePdfLoading, setTelechargeRecepissePdfLoading] = useState(false);
   /** Instantané du dossier (champs API) si le transfert est refusé pour non-éligibilité. */
   const [transfertEligibiliteDiagnostic, setTransfertEligibiliteDiagnostic] = useState<Record<string, unknown> | null>(
@@ -1668,12 +1658,6 @@ const NouvelleDemandeePage: React.FC = () => {
   const requiresNumeroOriginePermis =
     selectedTypeDemandeKey === 'DUPLICATAFICHEENREGISTREMENT' ||
     selectedTypeDemandeKey === 'FICHEENREGISTREMENT';
-  /** Renouvellement : parcours simplifié (numéro → catégories → paiement → CNEDDT), hors édition d'un dossier existant. */
-  const isRenouvellementSimplifie = selectedTypeDemandeKey === 'RENOUVELLEMENT' && !isEditingExistingDossier;
-  /** Mise à jour : même parcours court (numéro → informations à corriger → paiement). */
-  const isMiseAJourSimplifiee = selectedTypeDemandeKey === 'MISEAJOUR' && !isEditingExistingDossier;
-  const isParcoursSimplifie = isRenouvellementSimplifie || isMiseAJourSimplifiee;
-  const isTypeDigitalisation = (TYPES_DIGITALISATION as readonly string[]).includes(selectedTypeDemandeKey);
 
   const handleConfirmPermisSelection = useCallback(() => {
     if (selectedPermisNumbers.length === 0) return;
@@ -2499,52 +2483,6 @@ const NouvelleDemandeePage: React.FC = () => {
     [muiTheme],
   );
 
-  const resetFormulaire = () => {
-    dispatch({ type: 'RESET' });
-    setCreatedDossierId('');
-    setIsEditingExistingDossier(false);
-    editionHydratePreserveRef.current = {};
-    setEditionHydrating(false);
-    setEditionHydrateError(null);
-    setEditionRecapFromGet(null);
-    setSubmitSuccess(null);
-    setSubmitError(null);
-    setDgdiStatus('idle');
-    setPermisVerified(false);
-    setPermisApiData(null);
-    setPermisIdentitySource(null);
-    setPermisSuggestions([]);
-    setSelectedPermisNumbers([]);
-    setSelectedPermisMeta({});
-    setManualPermisB({ numero_permis: '', date_obtention: '', date_validite: '', lieu_obtention: '' });
-    setPermisParts(EMPTY_PARTS);
-  };
-
-  const selectTypeDemandeParCle = (cle: string): boolean => {
-    const td = typesDemande.find((t) => normalizeEntityKey(t.code || t.name) === cle);
-    if (!td) {
-      setSubmitError(`Type de demande « ${cle} » introuvable.`);
-      return false;
-    }
-    dispatch({ type: 'SET_TYPE_DEMANDE', id: td.id, name: td.name, is_nouveau_permis: isNouveauPermis(td.name) });
-    return true;
-  };
-
-  /** Écran Renouvellement → personne non digitalisée : on bascule sur la digitalisation choisie. */
-  const handleDigitaliserPuisRenouveler = (cleTypeDigitalisation: string) => {
-    resetFormulaire();
-    setDossierDigitalisationPourRenouvellement(null);
-    if (selectTypeDemandeParCle(cleTypeDigitalisation)) setRenouvellementApresDigitalisation(true);
-  };
-
-  /** Digitalisation transmise → renouvellement simplifié sur les données du dossier, sans ressaisie. */
-  const handleContinuerVersRenouvellement = () => {
-    const dossierDigitalisationId = createdDossierId;
-    resetFormulaire();
-    setRenouvellementApresDigitalisation(false);
-    if (selectTypeDemandeParCle('RENOUVELLEMENT')) setDossierDigitalisationPourRenouvellement(dossierDigitalisationId);
-  };
-
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <ThemeProvider theme={demandePageTheme}>
@@ -2560,7 +2498,7 @@ const NouvelleDemandeePage: React.FC = () => {
       >
     <Container maxWidth={false} sx={{ py: 3, px: { xs: 2, md: 3 } }}>
       <Grid container spacing={2.5} alignItems="flex-start">
-        <Grid item xs={12} lg={isParcoursSimplifie ? 12 : 8.5}>
+        <Grid item xs={12} lg={8.5}>
       {/* Header */}
       <Box
         sx={{
@@ -2593,7 +2531,6 @@ const NouvelleDemandeePage: React.FC = () => {
       </Box>
 
       {/* Progress */}
-      {!isParcoursSimplifie && (
       <Paper variant="outlined" sx={{ p: 1.5, mb: 2.5, bgcolor: alpha(muiTheme.palette.primary.main, 0.04), borderColor: alpha(DEMANDE_THEME_NAVY, 0.18) }}>
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
           {[
@@ -2616,7 +2553,6 @@ const NouvelleDemandeePage: React.FC = () => {
           </Typography>
         </Stack>
       </Paper>
-      )}
 
       {submitSuccess && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSubmitSuccess(null)}>{submitSuccess}</Alert>}
       {submitError  && <Alert severity="error"   sx={{ mb: 2 }} onClose={() => setSubmitError(null)}>{submitError}</Alert>}
@@ -2741,29 +2677,6 @@ const NouvelleDemandeePage: React.FC = () => {
             )}
       </Paper>
 
-      {isRenouvellementSimplifie ? (
-        <RenouvellementSimplifie
-          key={`${state.type_demande_id}:${dossierDigitalisationPourRenouvellement ?? ''}`}
-          typeDemandeId={state.type_demande_id}
-          typeDemandeName={state.type_demande_name}
-          canBypassPaiement={canBypassVerifPaiementDev}
-          onDigitaliser={handleDigitaliserPuisRenouveler}
-          dossierDigitalisationId={dossierDigitalisationPourRenouvellement}
-        />
-      ) : isMiseAJourSimplifiee ? (
-        <MiseAJourSimplifiee
-          key={state.type_demande_id}
-          typeDemandeId={state.type_demande_id}
-          typeDemandeName={state.type_demande_name}
-        />
-      ) : (
-      <>
-      {renouvellementApresDigitalisation && isTypeDigitalisation && (
-        <Alert severity="info" sx={{ mb: 2.5 }} onClose={() => setRenouvellementApresDigitalisation(false)}>
-          <strong>Digitalisation puis renouvellement.</strong> Complétez cette digitalisation jusqu'au transfert à la
-          biométrie, puis cliquez sur « Continuer vers le renouvellement » pour renouveler les catégories expirées.
-        </Alert>
-      )}
       {/* ── SECTION 2 : Vérification permis (si permis existant) ─────────── */}
       {!state.is_nouveau_permis && (
       <Paper variant="outlined" sx={{ mb: 2.5, p: 2, opacity: canEditCandidat ? 1 : 0.7 }}>
@@ -3671,13 +3584,29 @@ const NouvelleDemandeePage: React.FC = () => {
         numeroPermis={state.permis.numero_permis}
         submitting={submitting}
         navyColor={DEMANDE_THEME_NAVY}
-        onReset={resetFormulaire}
+        onReset={() => {
+          dispatch({ type: 'RESET' });
+          setCreatedDossierId('');
+          setIsEditingExistingDossier(false);
+          editionHydratePreserveRef.current = {};
+          setEditionHydrating(false);
+          setEditionHydrateError(null);
+          setEditionRecapFromGet(null);
+          setSubmitSuccess(null);
+          setSubmitError(null);
+          setDgdiStatus('idle');
+          setPermisVerified(false);
+          setPermisApiData(null);
+          setPermisIdentitySource(null);
+          setPermisSuggestions([]);
+          setSelectedPermisNumbers([]);
+          setSelectedPermisMeta({});
+          setManualPermisB({ numero_permis: '', date_obtention: '', date_validite: '', lieu_obtention: '' });
+          setPermisParts(EMPTY_PARTS);
+        }}
         onSubmit={() => void handleSubmit()}
       />
-      </>
-      )}
         </Grid>
-        {!isParcoursSimplifie && (
         <Grid item xs={12} lg={3.5} sx={{ alignSelf: { xs: 'stretch', lg: 'flex-start' }, minWidth: 0 }}>
           <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column' }}>
             <SummaryRecapCards
@@ -3861,16 +3790,6 @@ const NouvelleDemandeePage: React.FC = () => {
                         >
                           {telechargeRecepissePdfLoading ? 'Génération du PDF…' : 'Retélécharger le récépissé PDF'}
                         </Button>
-                        {isTypeDigitalisation && createdDossierId && (
-                          <Button
-                            size="small"
-                            variant="contained"
-                            sx={{ textTransform: 'none', ml: 1 }}
-                            onClick={handleContinuerVersRenouvellement}
-                          >
-                            Continuer vers le renouvellement
-                          </Button>
-                        )}
                       </Alert>
                     )}
 
@@ -4007,7 +3926,6 @@ const NouvelleDemandeePage: React.FC = () => {
           </Paper>
           </Box>
         </Grid>
-        )}
       </Grid>
     </Container>
       </Box>

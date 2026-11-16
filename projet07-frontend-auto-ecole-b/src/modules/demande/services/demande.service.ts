@@ -564,34 +564,6 @@ export async function submitDemande(state: DemandeFormState): Promise<{ dossierI
   let candidatId = state.candidat_id;
 
   if (state.candidat_mode === 'create') {
-    candidatId = await createCandidatFromState(state);
-  }
-
-  if (!candidatId) throw new Error('Aucun candidat sélectionné ou créé.');
-
-  // 3. Construire et envoyer le payload dossier
-  const payload = buildDossierPayloadFromDemandeState(
-    candidatId,
-    state as DemandeFormState & { selected_permis_data?: PermisApiData[] },
-    'create',
-  );
-
-  try {
-    const resp = await gestionDossierService.createDossier(payload as Parameters<typeof gestionDossierService.createDossier>[0]);
-    const dossierId =
-      (resp as { data?: { id?: string }; id?: string })?.data?.id ??
-      (resp as { id?: string })?.id ??
-      '';
-    return { dossierId };
-  } catch (err) {
-    throw new Error(extractError(err, 'Erreur lors de la création du dossier.'));
-  }
-}
-
-/** POST /auth/register puis POST /candidats ; retourne l'id du candidat créé. */
-async function createCandidatFromState(state: DemandeFormState): Promise<string> {
-  let candidatId = '';
-  {
     // 1. Créer le compte personne
     let personneId: string;
     try {
@@ -647,257 +619,25 @@ async function createCandidatFromState(state: DemandeFormState): Promise<string>
     }
   }
 
-  return candidatId;
-}
+  if (!candidatId) throw new Error('Aucun candidat sélectionné ou créé.');
 
-// ── Renouvellement simplifié ─────────────────────────────────────────────────
+  // 3. Construire et envoyer le payload dossier
+  const payload = buildDossierPayloadFromDemandeState(
+    candidatId,
+    state as DemandeFormState & { selected_permis_data?: PermisApiData[] },
+    'create',
+  );
 
-export interface CandidatRenouvellement {
-  id: string;
-  numero_candidat?: string;
-  personne?: { nom?: string; prenom?: string; email?: string; contact?: string };
-}
-
-/** Candidat existant dont l'identité (nom, prénom, date de naissance) correspond au permis. */
-export async function findCandidatPourPermis(p: PermisApiData): Promise<CandidatRenouvellement | null> {
-  const nom = String(p.nom ?? '').trim();
-  const dateNaissance = fmtDateOnly(typeof p.date_naissance === 'string' ? p.date_naissance : undefined);
-  if (!nom || !dateNaissance) return null;
-  const params: Record<string, string> = { nom, date_naissance: dateNaissance, per_page: '5' };
-  const prenom = String(p.prenom ?? '').trim();
-  if (prenom) params.prenom = prenom;
-  const resp = await axiosClient.get('/candidats', { params });
-  return extractPaginatedList<CandidatRenouvellement>(resp.data)[0] ?? null;
-}
-
-export interface NouveauCandidatRenouvellement {
-  telephone: string;
-  email?: string;
-  genre: string;
-  type_piece: string;
-  numero_piece: string;
-}
-
-/** Crée compte + profil candidat à partir des données du permis (personne absente de la base candidats). */
-export async function createCandidatPourRenouvellement(
-  p: PermisApiData,
-  saisie: NouveauCandidatRenouvellement,
-): Promise<string> {
-  // Le titulaire ne se connecte pas dans ce parcours : mot de passe aléatoire, réinitialisable par « mot de passe oublié ».
-  const password = `Rn-${crypto.randomUUID()}`;
-  const state = {
-    ...({} as DemandeFormState),
-    candidat_mode: 'create',
-    personne: {
-      nom: String(p.nom ?? '').trim(),
-      prenom: String(p.prenom ?? '').trim(),
-      email: saisie.email?.trim() || '',
-      password,
-      password_confirmation: password,
-      telephone: saisie.telephone.trim(),
-      adresse: '',
-    },
-    candidat: {
-      date_naissance: fmtDateOnly(typeof p.date_naissance === 'string' ? p.date_naissance : undefined),
-      lieu_naissance: String(p.lieu_naissance ?? '').trim(),
-      nip: '',
-      type_piece: saisie.type_piece,
-      numero_piece: saisie.numero_piece.trim(),
-      nationalite: String(p.nationalite ?? '').trim(),
-      genre: saisie.genre,
-    },
-  } as unknown as DemandeFormState;
-  return createCandidatFromState(state);
-}
-
-/**
- * Crée (ou reprend) le dossier de renouvellement. Le serveur renvoie `existing: true`
- * s'il existe déjà un renouvellement non transmis pour ce numéro de permis.
- */
-export async function createDossierRenouvellement(input: {
-  candidatId: string;
-  typeDemandeId: string;
-  numeroPermis: string;
-  categories: PermisApiData[];
-}): Promise<{ dossierId: string; numero?: string; existing: boolean }> {
-  const principal = pickPrincipalPermisPayload(input.categories);
-  const payload: Record<string, unknown> = {
-    candidat_id: input.candidatId,
-    type_demande_id: input.typeDemandeId,
-    statut: 'en_attente',
-    date_creation: new Date().toISOString().split('T')[0],
-    expired: false,
-    suspended: false,
-    numero_permis: input.numeroPermis.replace(/-/g, '').trim(),
-    data_categorie: buildDataCategoriePayloadStrings(input.categories),
-  };
-  if (principal?.lieu_obtention) payload.lieu_de_dobtention_du_permis = String(principal.lieu_obtention);
-  if (typeof principal?.date_obtention === 'string' && principal.date_obtention) {
-    payload.date_de_dobtention_du_permis = fmtDateOnly(principal.date_obtention);
-  }
-  if (typeof principal?.date_validite === 'string' && principal.date_validite) {
-    payload.date_de_delivrance_du_permis = fmtDateOnly(principal.date_validite);
-  }
   try {
-    const resp = await axiosClient.post('/dossiers', payload);
-    const body = resp.data as { existing?: boolean; data?: { id?: string; numero?: string } };
-    const dossierId = String(body?.data?.id ?? '');
-    if (!dossierId) throw new Error('Réponse de création du dossier invalide (id manquant).');
-    return { dossierId, numero: body?.data?.numero, existing: Boolean(body?.existing) };
+    const resp = await gestionDossierService.createDossier(payload as Parameters<typeof gestionDossierService.createDossier>[0]);
+    const dossierId =
+      (resp as { data?: { id?: string }; id?: string })?.data?.id ??
+      (resp as { id?: string })?.id ??
+      '';
+    return { dossierId };
   } catch (err) {
-    throw new Error(extractError(err, 'Erreur lors de la création du dossier de renouvellement.'));
+    throw new Error(extractError(err, 'Erreur lors de la création du dossier.'));
   }
-}
-
-/** Statut et code de paiement courants d'un dossier (code généré par le serveur au passage en attente de paiement). */
-export async function fetchStatutEtCodePaiement(dossierId: string): Promise<{ statut: string; code: string }> {
-  const res = await axiosClient.get(`/dossiers/${dossierId}`);
-  const d = (res.data?.data ?? res.data) as Record<string, unknown>;
-  const attrs = d?.attributes as Record<string, unknown> | undefined;
-  return {
-    statut: String(d?.statut ?? attrs?.statut ?? ''),
-    code: String(d?.code_paiement ?? attrs?.code_paiement ?? '').trim(),
-  };
-}
-
-// ── Mise à jour (correction d'état civil) ────────────────────────────────────
-
-/** Champs corrigeables, dans l'ordre d'affichage (mêmes clés que CHAMPS_MISE_A_JOUR côté serveur). */
-export const CHAMPS_MISE_A_JOUR = [
-  { cle: 'nom', label: 'Nom' },
-  { cle: 'prenom', label: 'Prénom' },
-  { cle: 'date_naissance', label: 'Date de naissance' },
-  { cle: 'lieu_naissance', label: 'Lieu de naissance' },
-  { cle: 'sexe', label: 'Sexe' },
-  { cle: 'nationalite', label: 'Nationalité' },
-] as const;
-
-export type ChampMiseAJour = (typeof CHAMPS_MISE_A_JOUR)[number]['cle'];
-export type CorrectionsMiseAJour = Partial<Record<ChampMiseAJour, { ancienne: string; nouvelle: string }>>;
-
-/**
- * Crée (ou reprend) le dossier de mise à jour. Les corrections sont appliquées au candidat par le serveur
- * après paiement vérifié. Le serveur renvoie `existing: true` s'il reprend une mise à jour non appliquée.
- */
-export async function createDossierMiseAJour(input: {
-  candidatId: string;
-  typeDemandeId: string;
-  numeroPermis: string;
-  corrections: CorrectionsMiseAJour;
-}): Promise<{ dossierId: string; numero?: string; existing: boolean }> {
-  try {
-    const resp = await axiosClient.post('/dossiers', {
-      candidat_id: input.candidatId,
-      type_demande_id: input.typeDemandeId,
-      statut: 'en_attente',
-      expired: false,
-      suspended: false,
-      numero_permis: input.numeroPermis.replace(/-/g, '').trim(),
-      donnees_mise_a_jour: { champs: input.corrections },
-    });
-    const body = resp.data as { existing?: boolean; data?: { id?: string; numero?: string } };
-    const dossierId = String(body?.data?.id ?? '');
-    if (!dossierId) throw new Error('Réponse de création du dossier invalide (id manquant).');
-    return { dossierId, numero: body?.data?.numero, existing: Boolean(body?.existing) };
-  } catch (err) {
-    throw new Error(extractError(err, 'Erreur lors de la création du dossier de mise à jour.'));
-  }
-}
-
-/** Types de demande qui digitalisent un permis existant (préalable au renouvellement d'une personne non digitalisée). */
-export const TYPES_DIGITALISATION = ['FICHEENREGISTREMENT', 'DUPLICATAFICHEENREGISTREMENT', 'DUPLICATA'] as const;
-
-export interface DonneesDigitalisation {
-  dossierId: string;
-  statut: string;
-  transmis: boolean;
-  numeroPermis: string;
-  candidat: CandidatRenouvellement;
-  principal: PermisApiData;
-  categories: PermisApiData[];
-}
-
-/** Convertit un dossier de digitalisation (GET /dossiers) en données exploitables par le renouvellement. */
-function donneesDepuisDossierDigitalisation(d: Record<string, unknown>): DonneesDigitalisation | null {
-  const candidat = d.candidat as
-    | { id?: string; numero_candidat?: string; date_naissance?: string; lieu_naissance?: string; nationalite?: string; numero_piece?: string; genre?: string; personne?: { nom?: string; prenom?: string; email?: string; contact?: string } }
-    | undefined;
-  const candidatId = String(candidat?.id ?? d.candidat_id ?? '');
-  if (!candidatId) return null;
-
-  const numeroPermis = String(d.numero_permis ?? d.numero_origine_permis ?? '').trim();
-  const identite = {
-    nom: candidat?.personne?.nom,
-    prenom: candidat?.personne?.prenom,
-    date_naissance: candidat?.date_naissance,
-    lieu_naissance: candidat?.lieu_naissance,
-    nationalite: candidat?.nationalite,
-    numero_identite: candidat?.numero_piece,
-    sexe: candidat?.genre,
-  };
-  const lignes = (Array.isArray(d.data_categorie) ? d.data_categorie : [])
-    .map((raw) => {
-      if (typeof raw !== 'string') return raw as Record<string, unknown>;
-      try {
-        return JSON.parse(raw) as Record<string, unknown>;
-      } catch {
-        return null;
-      }
-    })
-    .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object');
-  const categories: PermisApiData[] = lignes.map((c) => ({
-    ...identite,
-    numero_permis: String(c.codification_code ?? '').trim() || numeroPermis,
-    categorie: String(c.classe ?? '').trim(),
-    lieu_obtention: String(c.ville ?? '').trim(),
-    date_obtention: fmtDateOnly(String(c.valable_du ?? '')),
-    date_validite: fmtDateOnly(String(c.jusqu_au ?? '')),
-    // Renseignés par le serveur après paiement d'un renouvellement
-    renouvele: c.renouvele === true,
-    ancienne_validite: fmtDateOnly(String(c.ancienne_validite ?? '')),
-    duree_ans: typeof c.duree_ans === 'number' ? c.duree_ans : undefined,
-  }));
-  const principal: PermisApiData = categories[0]
-    ? { ...categories[0], numero_permis: numeroPermis || categories[0].numero_permis }
-    : { ...identite, numero_permis: numeroPermis };
-  const statut = String(d.statut ?? '');
-
-  return {
-    dossierId: String(d.id ?? ''),
-    statut,
-    transmis: statut.toUpperCase().replace(/\s+/g, '').includes('DOSSIERENVOY'),
-    numeroPermis,
-    candidat: { id: candidatId, numero_candidat: candidat?.numero_candidat, personne: candidat?.personne },
-    principal,
-    categories,
-  };
-}
-
-/** Charge un dossier (digitalisation ou renouvellement) avec son titulaire et ses catégories. */
-export async function chargerDossierAvecCategories(dossierId: string): Promise<DonneesDigitalisation | null> {
-  const res = await axiosClient.get(`/dossiers/${dossierId}`, { params: { include: 'candidat.personne' } });
-  const d = (res.data?.data ?? res.data) as Record<string, unknown> | null;
-  return d ? donneesDepuisDossierDigitalisation(d) : null;
-}
-
-/** Dossiers portant ce numéro de permis (ou d'origine) dont le type est dans `types`, du plus récent au plus ancien. */
-async function findDossiersParNumero(numero: string, types: readonly string[]): Promise<DonneesDigitalisation[]> {
-  const res = await axiosClient.get('/dossiers', { params: { numero_permis: numero.replace(/-/g, '').trim(), per_page: 20 } });
-  return extractPaginatedList<Record<string, unknown>>(res.data)
-    .filter((d) => types.includes(normalizeDemandeKey((d.type_demande as { name?: string } | undefined)?.name)))
-    .map(donneesDepuisDossierDigitalisation)
-    .filter((x): x is DonneesDigitalisation => !!x);
-}
-
-/** Dossier de digitalisation (fiche / duplicata) portant ce numéro : le dernier transmis, sinon le dernier en cours. */
-export async function findDigitalisationParNumero(numero: string): Promise<DonneesDigitalisation | null> {
-  const dossiers = await findDossiersParNumero(numero, TYPES_DIGITALISATION);
-  return dossiers.find((d) => d.transmis) ?? dossiers[0] ?? null;
-}
-
-/** Dernier renouvellement transmis au CNEDDT pour ce permis : ses catégories portent les nouvelles dates. */
-export async function findRenouvellementTransmisParNumero(numero: string): Promise<DonneesDigitalisation | null> {
-  return (await findDossiersParNumero(numero, ['RENOUVELLEMENT'])).find((d) => d.transmis) ?? null;
 }
 
 export const demandeService = {

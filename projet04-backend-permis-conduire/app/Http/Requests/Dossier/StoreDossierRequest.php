@@ -58,10 +58,6 @@ class StoreDossierRequest extends FormRequest
             'centre_id' => ['prohibited'],
             // Données catégorie au format JSON (objet ou tableau). Optionnel.
             'data_categorie' => ['nullable', 'array'],
-            'donnees_mise_a_jour' => ['nullable', 'array'],
-            'donnees_mise_a_jour.champs' => ['required_with:donnees_mise_a_jour', 'array', 'min:1'],
-            'donnees_mise_a_jour.champs.*.ancienne' => ['nullable', 'string', 'max:255'],
-            'donnees_mise_a_jour.champs.*.nouvelle' => ['required', 'string', 'max:255'],
         ];
     }
 
