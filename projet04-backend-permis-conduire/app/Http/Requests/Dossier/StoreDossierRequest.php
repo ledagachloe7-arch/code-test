@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Dossier;
 
+use App\Models\TypeDemande;
 use App\Support\DossierDataCategorieInput;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Contracts\Validation\Validator;
@@ -37,7 +38,17 @@ class StoreDossierRequest extends FormRequest
             'candidat_id' => ['nullable', 'uuid', 'exists:candidats,id'],
             'auto_ecole_id' => ['nullable', 'uuid', 'exists:auto_ecoles,id'],
             'formation_id' => ['nullable', 'uuid', 'exists:formation_auto_ecoles,id'],
-            'type_demande_id' => ['nullable', 'uuid', 'exists:type_demandes,id'],
+            'type_demande_id' => [
+                'nullable',
+                'uuid',
+                'exists:type_demandes,id',
+                function (string $attribute, mixed $value, \Closure $fail) {
+                    $name = TypeDemande::where('id', $value)->value('name');
+                    if ($name !== null && in_array(strtoupper($name), TypeDemande::TYPES_RETIRES, true)) {
+                        $fail("Le type de demande {$name} n'est plus disponible.");
+                    }
+                },
+            ],
             'statut' => ['required', 'string'],
             'commentaires' => ['nullable', 'string'],
             'referenciel_id' => ['nullable', 'uuid', 'exists:referentiels,id'],

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { AutoEcole, Formation, TypeDemande, Referentiel, autoEcoleService, typeDemandeService, referentielService } from '../services';
 import { useAppStore } from '../../../store';
 import type { LieuExamenData } from './types';
+import { isTypeDemandeRetire } from './utils';
 
 export const useAutoEcoles = () => {
   const [autoEcoles, setAutoEcoles] = useState<AutoEcole[]>([]);
@@ -51,7 +52,7 @@ export const useTypeDemandes = () => {
     setLoading(true);
     try {
       const response = await typeDemandeService.getTypeDemandes(1, 100);
-      setTypeDemandes(response.data || []);
+      setTypeDemandes((response.data || []).filter((t) => !isTypeDemandeRetire(t.name)));
     } catch (err: any) {
       console.error('Erreur lors du chargement des types de demande:', err);
     } finally {

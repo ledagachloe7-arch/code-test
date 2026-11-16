@@ -10,6 +10,7 @@ import {
 import { CheckCircle, ArrowBack, ArrowForward, Description, RadioButtonUnchecked, Info } from '@mui/icons-material';
 import toast from 'react-hot-toast';
 import { TypeDemande } from '../../services';
+import { isTypeDemandeRetire } from '../utils';
 
 interface TypeDemandeStepProps {
   typeDemandeId: string;
@@ -65,9 +66,11 @@ export const TypeDemandeStep: React.FC<TypeDemandeStepProps> = ({
     );
   }
 
-  // Filtrer pour exclure NOUVEAUPERMIS et FICHEENREGISTREMENT
+  // Filtrer pour exclure NOUVEAUPERMIS, FICHEENREGISTREMENT et les types retirés
   const filteredTypeDemandes = typeDemandes.filter(
-    (typeDemande) => !['NOUVEAUPERMIS', 'FICHEENREGISTREMENT'].includes(typeDemande.name.toUpperCase())
+    (typeDemande) =>
+      !['NOUVEAUPERMIS', 'FICHEENREGISTREMENT'].includes(typeDemande.name.toUpperCase()) &&
+      !isTypeDemandeRetire(typeDemande.name)
   );
 
   // Afficher un toast quand un type de demande est sélectionné

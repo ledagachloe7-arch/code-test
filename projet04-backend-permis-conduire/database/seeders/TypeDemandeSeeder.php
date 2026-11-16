@@ -14,8 +14,7 @@ class TypeDemandeSeeder extends Seeder
             'DUPLICATA',
             'FICHEENREGISTREMENT',
             'DUPLICATAFICHEENREGISTREMENT',
-            'RENOUVELLEMENT',
-            'CONVERSION',
+            // RENOUVELLEMENT, MISEAJOUR et CONVERSION retirés : voir TypeDemande::TYPES_RETIRES
         ];
 
         foreach ($types as $type) {
@@ -25,6 +24,6 @@ class TypeDemandeSeeder extends Seeder
             );
         }
 
-        $this->command->info('Les 6 types de demande ont été initialisés.');
+        $this->command->info('Les 4 types de demande ont été initialisés.');
     }
 }

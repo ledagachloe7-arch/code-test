@@ -53,7 +53,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { PaperAirplaneIcon } from '@heroicons/react/24/solid';
 import { ROUTES } from '../../../shared/constants';
-import { buildNumeroPermis } from '../../cnepc/forms/utils';
+import { buildNumeroPermis, isTypeDemandeRetire } from '../../cnepc/forms/utils';
 import type { NumeroPermisParts, PermisFormatType } from '../../cnepc/forms/types';
 import { demandeReducer, initialDemandeState } from '../types';
 import { demandeService, type PermisApiData } from '../services/demande.service';
@@ -2592,8 +2592,10 @@ const NouvelleDemandeePage: React.FC = () => {
             : (
               <Grid container spacing={1.5}>
                 {typesDemande
-                  // Fiche d'enregistrement retirée des choix (sauf dossier existant déjà de ce type)
-                  .filter((td) => state.type_demande_id === td.id || normalizeEntityKey(td.code || td.name || '') !== 'FICHEENREGISTREMENT')
+                  // Fiche d'enregistrement et types retirés exclus des choix (sauf dossier existant déjà de ce type)
+                  .filter((td) => state.type_demande_id === td.id || (
+                    normalizeEntityKey(td.code || td.name || '') !== 'FICHEENREGISTREMENT' && !isTypeDemandeRetire(td.name)
+                  ))
                   .map((td) => {
                   const selected = state.type_demande_id === td.id;
                   const demandeCode = (td.code ?? '').toString().trim().toUpperCase();

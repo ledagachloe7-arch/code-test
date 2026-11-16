@@ -210,6 +210,14 @@ export const checkIsFicheEnregistre = (typeDemandeName: string): boolean => {
   return nameLower.includes('fiche d\'enregistre');
 };
 
+/** Types de demande retirés : plus proposés à la création (miroir de TypeDemande::TYPES_RETIRES côté API). */
+export const TYPES_DEMANDE_RETIRES = ['RENOUVELLEMENT', 'MISEAJOUR', 'CONVERSION'] as const;
+
+export const isTypeDemandeRetire = (typeDemandeName?: string | null): boolean => {
+  const key = String(typeDemandeName ?? '').toUpperCase().replace(/[^A-Z]/g, '');
+  return (TYPES_DEMANDE_RETIRES as readonly string[]).includes(key);
+};
+
 /**
  * Vérifie si un type de demande est un "duplicata"
  */

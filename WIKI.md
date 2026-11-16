@@ -121,7 +121,8 @@ L'interface de connexion utilise la route API **`POST /api/auth/login-direct`**.
 
 ### [2026-11-16] - Retrait des circuits « Renouvellement simplifié » et « Mise à jour » (branche `feat/retrait-renouvellement-maj`)
 * **Retiré** : parcours `RenouvellementSimplifie` et `MiseAJourSimplifiee` (Nouvelle demande), type `MISEAJOUR`, colonne / migration `donnees_mise_a_jour`, règles serveur du renouvellement (catégories C/D, anti-doublon, nouvelles dates après paiement, transfert sans biométrie), seeders de test du renouvellement. Ces fichiers reviennent à l'état de `yaf-test-branch`.
-* **Conservé** : type `RENOUVELLEMENT` dans le formulaire classique, simulation locale Paynala / CNEDDT (`PAYNALA_SIMULATION`, `CNEDDT_SIMULATION`), « Fiche d'enregistrement » retirée des choix de type, filtres `nom` / `prenom` / `date_naissance` sur `GET /candidats`, retour `shortCode` / `alreadyExistsAtBiometrie` de `sendDossierToCNEDDT`.
+* **Types retirés** : `RENOUVELLEMENT`, `MISEAJOUR` et `CONVERSION` ne sont plus proposés à la création (Nouvelle demande, création de dossier par étapes, formulaire dossier, inscription), via `TYPES_DEMANDE_RETIRES` (`cnepc/forms/utils.ts`) ; l'API refuse un `POST /dossiers` de ces types (422, `TypeDemande::TYPES_RETIRES`) ; retirés du `TypeDemandeSeeder`. Les lignes restent en base car des dossiers existants les utilisent (5 renouvellements, 1 mise à jour au 2026-11-16) et ces dossiers restent consultables.
+* **Conservé** : simulation locale Paynala / CNEDDT (`PAYNALA_SIMULATION`, `CNEDDT_SIMULATION`), « Fiche d'enregistrement » retirée des choix de type, filtres `nom` / `prenom` / `date_naissance` sur `GET /candidats`, retour `shortCode` / `alreadyExistsAtBiometrie` de `sendDossierToCNEDDT`.
 * Sauvegarde de l'état avant retrait : commit `8ec0746` sur `feat/renouvellement-simplifie`.
 
 ### [2026-11-01] - Implémentation du Cache Redis Global & Résolution des Latences

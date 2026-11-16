@@ -11,6 +11,9 @@ class TypeDemande extends Model
 
     protected $table = 'type_demandes';
 
+    /** Types retirés : plus de création de dossier ; les dossiers existants restent consultables. */
+    public const TYPES_RETIRES = ['RENOUVELLEMENT', 'MISEAJOUR', 'CONVERSION'];
+
     protected $fillable = [
         'name',
     ];

@@ -39,7 +39,7 @@ import type { DgdiVerificationData } from '../services/dgdi.service';
 import { authService } from '../../auth/services/authService';
 import { PersonneFormStep, CandidatFormStep } from './steps';
 import { validatePersonne, validateCandidat } from './validation';
-import { getFieldLabel } from './utils';
+import { getFieldLabel, isTypeDemandeRetire } from './utils';
 
 interface InscriptionFormationFormProps {
   /** En mode dialog : contrôler l'ouverture. En mode page : ignoré. */
@@ -150,7 +150,7 @@ const InscriptionFormationForm: React.FC<InscriptionFormationFormProps> = ({
     setLoadingTypeDemandes(true);
     try {
       const response = await typeDemandeService.getTypeDemandes(1, 100);
-      setTypeDemandes(response.data || []);
+      setTypeDemandes((response.data || []).filter((t: TypeDemande) => !isTypeDemandeRetire(t.name)));
     } catch (err: any) {
       console.error('Erreur lors du chargement des types de demande:', err);
       // Ne pas bloquer le formulaire si les types de demande ne peuvent pas être chargés

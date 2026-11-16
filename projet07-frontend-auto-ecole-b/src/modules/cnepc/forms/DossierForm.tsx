@@ -42,7 +42,7 @@ import {
 } from '../services';
 import type { DataCategorieItem } from './steps/NumeroPermisStep';
 import type { Candidat } from '../types/auto-ecole';
-import { checkIsFicheEnregistre } from './utils';
+import { checkIsFicheEnregistre, isTypeDemandeRetire } from './utils';
 import type { Statut } from '../../statut/types/statut';
 import { statutService } from '../../statut/services/statut.service';
 import { circuitSuiviService } from '../../reception/services/circuit-suivi.service';
@@ -362,7 +362,7 @@ const DossierForm: React.FC<DossierFormProps> = ({
             ? (statutsResp as any).data
             : [];
 
-        setTypeDemandes(parsedTypeDemandes);
+        setTypeDemandes(parsedTypeDemandes.filter((t: TypeDemande) => !isTypeDemandeRetire(t.name)));
         setProvinces(Array.isArray(provincesResp) ? provincesResp : []);
         setCentres(Array.isArray(centresResp) ? centresResp : []);
         setReferentielsTypePermis(Array.isArray(referentielsPermisResp) ? referentielsPermisResp : []);
