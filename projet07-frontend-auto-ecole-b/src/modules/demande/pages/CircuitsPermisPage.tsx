@@ -7,7 +7,7 @@ import { ROUTES } from '../../../shared/constants';
 import NouvelleDemandeePage from './NouvelleDemandeePage';
 
 /**
- * Circuits Permis rose / Permis vert.
+ * Permis de conduire : circuits Permis rose / Permis vert.
  * Chaque sous-circuit ouvre le parcours existant de « Nouvelle demande », limité à ses types de demande.
  * Pour ajouter un sous-circuit : une entrée dans `sousCircuits` (clé = nom du type de demande en base).
  */
@@ -15,8 +15,11 @@ interface SousCircuit {
   id: string;
   libelle: string;
   description: string;
-  /** Clés de type de demande (normalisées, ex. 'DUPLICATA'). Tableau constant : sert de dépendance React. */
-  typesDemande: string[];
+  /**
+   * Clés de type de demande (normalisées, ex. 'DUPLICATA'). Tableau constant : sert de dépendance React.
+   * Absent = sous-circuit pas encore branché (affiché « À venir », non cliquable).
+   */
+  typesDemande?: string[];
 }
 
 interface Circuit {
@@ -27,32 +30,39 @@ interface Circuit {
   sousCircuits: SousCircuit[];
 }
 
+/** Sous-circuits communs : Duplicata, Mise à jour, Renouvellement, puis un sous-circuit propre au circuit. */
+const sousCircuitsCommuns = (support: string, duplicata?: string[]): SousCircuit[] => [
+  { id: 'duplicata', libelle: 'Duplicata', description: `Duplicata ${support}.`, typesDemande: duplicata },
+  { id: 'mise-a-jour', libelle: 'Mise à jour', description: `Correction des informations ${support}.` },
+  { id: 'renouvellement', libelle: 'Renouvellement', description: `Renouvellement ${support}.` },
+];
+
 const CIRCUITS: Circuit[] = [
   {
     id: 'rose',
     libelle: 'Permis rose',
-    description: 'Permis nationaux',
+    description: 'Permis de conduire national',
     couleur: '#c2185b',
     sousCircuits: [
+      ...sousCircuitsCommuns('du permis rose', ['DUPLICATA']),
       {
-        id: 'duplicata',
-        libelle: 'Duplicata',
-        description: 'Duplicata du permis rose (permis national).',
-        typesDemande: ['DUPLICATA'],
+        id: 'informatisation',
+        libelle: 'Informatisation permis de conduire',
+        description: 'Informatisation d’un permis rose existant.',
       },
     ],
   },
   {
     id: 'vert',
     libelle: 'Permis vert',
-    description: "Fiches d'enregistrement",
+    description: "Fiche d'enregistrement",
     couleur: '#2e7d32',
     sousCircuits: [
+      ...sousCircuitsCommuns("de la fiche d'enregistrement", ['DUPLICATAFICHEENREGISTREMENT']),
       {
-        id: 'duplicata-fiche',
-        libelle: "Duplicata fiche d'enregistrement",
-        description: "Duplicata du permis vert (fiche d'enregistrement).",
-        typesDemande: ['DUPLICATAFICHEENREGISTREMENT'],
+        id: 'nouvelle-fiche',
+        libelle: "Création d'une nouvelle fiche",
+        description: "Création d'une nouvelle fiche d'enregistrement.",
       },
     ],
   },
@@ -65,12 +75,15 @@ const CarteChoix: React.FC<{
   description: string;
   couleur: string;
   badge?: string;
+  /** Non cliquable, grisé, avec le badge « À venir ». */
+  aVenir?: boolean;
   onClick: () => void;
-}> = ({ titre, description, couleur, badge, onClick }) => (
+}> = ({ titre, description, couleur, badge, aVenir, onClick }) => (
   <Card
     variant="outlined"
     sx={{
       height: '100%',
+      ...(aVenir && { opacity: 0.55, pointerEvents: 'none' }),
       borderRadius: 2,
       borderColor: alpha(couleur, 0.35),
       borderLeft: `6px solid ${couleur}`,
@@ -78,7 +91,7 @@ const CarteChoix: React.FC<{
       '&:hover': { boxShadow: `0 6px 20px ${alpha(couleur, 0.18)}`, transform: 'translateY(-1px)' },
     }}
   >
-    <CardActionArea onClick={onClick} sx={{ height: '100%' }}>
+    <CardActionArea onClick={onClick} disabled={aVenir} sx={{ height: '100%' }}>
       <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2.5 }}>
         <Box
           sx={{
@@ -102,9 +115,10 @@ const CarteChoix: React.FC<{
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
             {description}
           </Typography>
+          {aVenir && <Chip label="À venir" size="small" variant="outlined" sx={{ mt: 1 }} />}
           {badge && <Chip label={badge} size="small" sx={{ mt: 1, bgcolor: alpha(couleur, 0.1), color: couleur, fontWeight: 600 }} />}
         </Box>
-        <ChevronRightIcon style={{ width: 22, color: couleur, flexShrink: 0 }} />
+        {!aVenir && <ChevronRightIcon style={{ width: 22, color: couleur, flexShrink: 0 }} />}
       </CardContent>
     </CardActionArea>
   </Card>
@@ -116,11 +130,11 @@ const CircuitsPermisPage: React.FC = () => {
   const [sousCircuit, setSousCircuit] = useState<SousCircuit | null>(null);
 
   // Sous-circuit choisi : parcours existant, inchangé, limité aux types du sous-circuit.
-  if (circuit && sousCircuit) {
+  if (circuit && sousCircuit?.typesDemande) {
     return (
       <NouvelleDemandeePage
         key={`${circuit.id}:${sousCircuit.id}`}
-        typesAutorises={sousCircuit.typesDemande}
+        typesAutorises={sousCircuit.typesDemande ?? []}
         titre={`${circuit.libelle} — ${sousCircuit.libelle}`}
         sousTitre={sousCircuit.description}
         onRetour={() => setSousCircuit(null)}
@@ -130,7 +144,7 @@ const CircuitsPermisPage: React.FC = () => {
 
   const enTete = circuit
     ? { titre: circuit.libelle, sousTitre: 'Choisissez le sous-circuit', retour: () => setCircuit(null) }
-    : { titre: 'Circuits permis', sousTitre: 'Choisissez le circuit : permis rose ou permis vert', retour: () => navigate(ROUTES.DASHBOARD) };
+    : { titre: 'Permis de conduire', sousTitre: 'Choisissez le circuit : permis rose ou permis vert', retour: () => navigate(ROUTES.DASHBOARD) };
 
   return (
     <Container maxWidth="lg" sx={{ py: 3, px: { xs: 2, md: 3 } }}>
@@ -163,7 +177,7 @@ const CircuitsPermisPage: React.FC = () => {
 
       {circuit && (
         <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
-          <Chip label="Circuits" size="small" variant="outlined" onClick={() => setCircuit(null)} />
+          <Chip label="Permis de conduire" size="small" variant="outlined" onClick={() => setCircuit(null)} />
           <Chip label={circuit.libelle} size="small" sx={{ bgcolor: alpha(circuit.couleur, 0.12), color: circuit.couleur, fontWeight: 600 }} />
         </Stack>
       )}
@@ -172,7 +186,13 @@ const CircuitsPermisPage: React.FC = () => {
         {circuit
           ? circuit.sousCircuits.map((sc) => (
               <Grid item xs={12} md={6} key={sc.id}>
-                <CarteChoix titre={sc.libelle} description={sc.description} couleur={circuit.couleur} onClick={() => setSousCircuit(sc)} />
+                <CarteChoix
+                  titre={sc.libelle}
+                  description={sc.description}
+                  couleur={circuit.couleur}
+                  aVenir={!sc.typesDemande}
+                  onClick={() => setSousCircuit(sc)}
+                />
               </Grid>
             ))
           : CIRCUITS.map((c) => (

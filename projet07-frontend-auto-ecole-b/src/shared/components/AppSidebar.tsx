@@ -124,10 +124,10 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ open, onToggle }) => {
       key: 'nouvelleDemande'
     },
     {
-      title: 'Circuits permis',
+      title: 'Permis de conduire',
       icon: IdentificationIcon,
       path: ROUTES.CIRCUITS_PERMIS,
-      description: 'Permis rose et permis vert',
+      description: "Permis rose (permis national) et permis vert (fiche d'enregistrement)",
       key: 'circuitsPermis'
     },
     {
@@ -262,10 +262,10 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ open, onToggle }) => {
       key: 'nouvelleDemande'
     },
     {
-      title: 'Circuits permis',
+      title: 'Permis de conduire',
       icon: IdentificationIcon,
       path: ROUTES.CIRCUITS_PERMIS,
-      description: 'Permis rose et permis vert',
+      description: "Permis rose (permis national) et permis vert (fiche d'enregistrement)",
       key: 'circuitsPermis'
     },
     {
