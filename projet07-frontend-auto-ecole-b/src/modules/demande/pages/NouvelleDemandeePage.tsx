@@ -648,7 +648,17 @@ const PermisResultCard: React.FC<{ data: PermisApiData }> = ({ data }) => (
 );
 
 // ════════════════════════════════════════════════════════════════════════════
-const NouvelleDemandeePage: React.FC = () => {
+/** Props facultatives : sans elles, la page « Nouvelle demande » est inchangée. */
+export interface NouvelleDemandeePageProps {
+  /** Clés de type de demande proposées (ex. ['DUPLICATA']) ; présélection automatique s'il n'y en a qu'une. */
+  typesAutorises?: string[];
+  titre?: string;
+  sousTitre?: string;
+  /** Bouton retour de l'en-tête (par défaut : Gestion dossier). */
+  onRetour?: () => void;
+}
+
+const NouvelleDemandeePage: React.FC<NouvelleDemandeePageProps> = ({ typesAutorises, titre, sousTitre, onRetour }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAppStore();
@@ -1184,6 +1194,13 @@ const NouvelleDemandeePage: React.FC = () => {
       cancelled = true;
     };
   }, [createdDossierId, isEditingExistingDossier]);
+
+  // Circuit restreint à un seul type : présélection (aussi après « Réinitialiser »).
+  useEffect(() => {
+    if (!typesAutorises || typesAutorises.length !== 1 || state.type_demande_id || typesDemande.length === 0) return;
+    const td = typesDemande.find((t) => normalizeEntityKey(t.code || t.name) === typesAutorises[0]);
+    if (td) dispatch({ type: 'SET_TYPE_DEMANDE', id: td.id, name: td.name, is_nouveau_permis: isNouveauPermis(td.name) });
+  }, [typesAutorises, typesDemande, state.type_demande_id]);
 
   // ── load on mount : types de demande en priorité (indépendant des autres appels) ─
   useEffect(() => {
@@ -2516,16 +2533,16 @@ const NouvelleDemandeePage: React.FC = () => {
           boxShadow: `0 4px 20px ${alpha(DEMANDE_THEME_NAVY, 0.08)}`,
         }}
       >
-        <IconButton size="small" onClick={() => navigate(ROUTES.GESTION_DOSSIER)} sx={{ color: demandePrimary }}>
+        <IconButton size="small" onClick={() => (onRetour ? onRetour() : navigate(ROUTES.GESTION_DOSSIER))} sx={{ color: demandePrimary }}>
           <ArrowLeftIcon style={{ width: 20 }} />
         </IconButton>
         <DocumentPlusIcon style={{ width: 32, height: 32, color: demandePrimary }} />
         <Box sx={{ flex: 1 }}>
           <Typography variant="h5" fontWeight={700} sx={{ color: demandePrimary, letterSpacing: -0.02 }}>
-            Nouvelle demande
+            {titre ?? 'Nouvelle demande'}
           </Typography>
           <Typography variant="body2" sx={{ color: alpha(demandePrimary, 0.78), mt: 0.25 }}>
-            Créez un dossier en remplissant les sections ci-dessous
+            {sousTitre ?? 'Créez un dossier en remplissant les sections ci-dessous'}
           </Typography>
         </Box>
       </Box>
@@ -2595,6 +2612,7 @@ const NouvelleDemandeePage: React.FC = () => {
                   // Fiche d'enregistrement et types retirés exclus des choix (sauf dossier existant déjà de ce type)
                   .filter((td) => state.type_demande_id === td.id || (
                     normalizeEntityKey(td.code || td.name || '') !== 'FICHEENREGISTREMENT' && !isTypeDemandeRetire(td.name)
+                    && (!typesAutorises || typesAutorises.includes(normalizeEntityKey(td.code || td.name || '')))
                   ))
                   .map((td) => {
                   const selected = state.type_demande_id === td.id;

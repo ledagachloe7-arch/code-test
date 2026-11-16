@@ -5,6 +5,7 @@ import ElevesInscritsPage from '../modules/eleves/pages/ElevesInscritsPage';
 import HistoriquePage from '../modules/eleves/pages/HistoriquePage';
 import NouvelleDemandeForm from '../modules/eleves/forms/NouvelleDemandeForm';
 import NouvelleDemandeePage from '../modules/demande/pages/NouvelleDemandeePage';
+import CircuitsPermisPage from '../modules/demande/pages/CircuitsPermisPage';
 
 const ElevesPage: React.FC = () => {
   return (
@@ -13,6 +14,7 @@ const ElevesPage: React.FC = () => {
       <Route path="/demandes" element={<DemandesInscriptionPage />} />
       <Route path="/inscrits" element={<ElevesInscritsPage />} />
       <Route path="/nouvelle-demande" element={<NouvelleDemandeePage />} />
+      <Route path="/circuits-permis" element={<CircuitsPermisPage />} />
       <Route path="/nouvelle" element={<NouvelleDemandeForm />} />
       <Route path="/historique" element={<HistoriquePage />} />
     </Routes>

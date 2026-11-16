@@ -6,6 +6,8 @@ export const ROUTES = {
   ELEVES: '/eleves',
   /** Assistance à la création de dossier (wizard) — même espace élèves. */
   NOUVELLE_DEMANDE: '/eleves/nouvelle-demande',
+  /** Circuits Permis rose / Permis vert (sous-circuits = parcours Nouvelle demande restreint). */
+  CIRCUITS_PERMIS: '/eleves/circuits-permis',
   DEMANDE_MES_DOSSIERS: '/eleves/mes-dossiers',
   DEMANDE_MES_RECLAMATIONS: '/eleves/mes-reclamations',
   DEMANDE_DETAILS: '/eleves/demandes/:id',

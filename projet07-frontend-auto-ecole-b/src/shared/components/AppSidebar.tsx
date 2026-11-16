@@ -36,6 +36,7 @@ import {
   FolderOpenIcon,
   DocumentTextIcon,
   DocumentPlusIcon,
+  IdentificationIcon,
   UserCircleIcon,
   CurrencyDollarIcon,
   BanknotesIcon,
@@ -121,6 +122,13 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ open, onToggle }) => {
       path: ROUTES.NOUVELLE_DEMANDE,
       description: 'Assistant de création d\'un dossier candidat',
       key: 'nouvelleDemande'
+    },
+    {
+      title: 'Circuits permis',
+      icon: IdentificationIcon,
+      path: ROUTES.CIRCUITS_PERMIS,
+      description: 'Permis rose et permis vert',
+      key: 'circuitsPermis'
     },
     {
       title: 'Nos formations',
@@ -254,6 +262,13 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ open, onToggle }) => {
       key: 'nouvelleDemande'
     },
     {
+      title: 'Circuits permis',
+      icon: IdentificationIcon,
+      path: ROUTES.CIRCUITS_PERMIS,
+      description: 'Permis rose et permis vert',
+      key: 'circuitsPermis'
+    },
+    {
       title: 'CNEPC',
       icon: PaperAirplaneIcon,
       path: ROUTES.CNEPC,
@@ -334,6 +349,8 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ open, onToggle }) => {
   function menuItemPermissionVisible(itemKey: string, visibleKeys: string[]): boolean {
     if (visibleKeys.includes(itemKey)) return true;
     if (itemKey === 'nouvelleDemande' && visibleKeys.includes('candidates')) return true;
+    // Circuits permis : memes droits que Nouvelle demande (pas de nouvelle permission a parametrer).
+    if (itemKey === 'circuitsPermis') return menuItemPermissionVisible('nouvelleDemande', visibleKeys);
     return false;
   }
 
@@ -385,7 +402,8 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ open, onToggle }) => {
       const p = location.pathname;
       if (!p.startsWith(ROUTES.ELEVES)) return false;
       const onNouvelle =
-        p === ROUTES.NOUVELLE_DEMANDE || p.startsWith(`${ROUTES.NOUVELLE_DEMANDE}/`);
+        p === ROUTES.NOUVELLE_DEMANDE || p.startsWith(`${ROUTES.NOUVELLE_DEMANDE}/`) ||
+        p === ROUTES.CIRCUITS_PERMIS || p.startsWith(`${ROUTES.CIRCUITS_PERMIS}/`);
       if (onNouvelle) return false;
       return true;
     }
