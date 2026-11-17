@@ -3,8 +3,10 @@ import axiosClient from '../../../shared/utils/axiosConfig';
 export type StatutRenouvellement = 'EN_ATTENTE_PAIEMENT' | 'CONFIRME' | 'ECHOUE' | 'ANNULE';
 export type Operateur = 'MOOV' | 'AIRTEL';
 
+/** Ligne h_permis (une catégorie d'un titulaire). */
 export interface PermisResultat {
   id: string;
+  numero_identite: string | null;
   numero_permis: string | null;
   nom: string;
   prenom: string | null;
@@ -13,12 +15,34 @@ export interface PermisResultat {
   date_validite: string | null;
 }
 
-export interface Renouvellement {
+/** Titulaire regroupant toutes ses catégories. */
+export interface TitulaireResultat {
+  cle: string;
+  /** Id d'une ligne h_permis du titulaire (sert de point d'entrée à l'API). */
+  hPermisId: string;
+  nom: string;
+  prenom: string | null;
+  date_naissance: string | null;
+  categories: PermisResultat[];
+}
+
+export interface RenouvellementCategorie {
   id: string;
-  numero: string;
   h_permis_id: string;
   numero_permis: string | null;
   categorie: string;
+  statut: StatutRenouvellement;
+  ancienne_date_expiration: string;
+  nouvelle_date_delivrance: string | null;
+  nouvelle_date_expiration: string | null;
+  duree_validite_annees: number | null;
+  age_au_renouvellement: number | null;
+}
+
+export interface Renouvellement {
+  id: string;
+  numero: string;
+  numero_identite: string;
   statut: StatutRenouvellement;
   operateur: Operateur;
   code_paiement: string;
@@ -26,29 +50,40 @@ export interface Renouvellement {
   montant: string;
   date_confirmation_paiement: string | null;
   motif_echec: string | null;
-  ancienne_date_expiration: string;
   nouvelle_date_delivrance: string | null;
-  nouvelle_date_expiration: string | null;
-  duree_validite_annees: number | null;
-  age_au_renouvellement: number | null;
   agent_email: string | null;
   created_at: string;
+  categories: RenouvellementCategorie[];
+}
+
+export interface EtatCategorie {
+  h_permis_id: string;
+  numero_permis: string | null;
+  categorie: string;
+  date_obtention: string | null;
+  date_expiration: string | null;
+  date_ouverture_renouvellement: string | null;
+  renouvelable: boolean;
+  message: string;
 }
 
 export interface EtatRenouvellement {
-  h_permis_id: string;
-  numero_permis: string | null;
-  nom: string;
-  prenom: string | null;
-  date_naissance: string | null;
-  categorie: string | null;
-  date_expiration: string | null;
-  date_ouverture_renouvellement: string | null;
-  expire: boolean;
+  titulaire: {
+    numero_identite: string | null;
+    nom: string;
+    prenom: string | null;
+    sexe: string | null;
+    date_naissance: string | null;
+    lieu_naissance: string | null;
+    nationalite: string | null;
+  };
+  categories: EtatCategorie[];
+  categories_a_renouveler: string[];
   renouvelable: boolean;
   message: string;
   renouvellement_en_attente: Renouvellement | null;
-  montant: number;
+  montant_par_categorie: number;
+  montant_total: number;
   devise: string;
 }
 
@@ -63,8 +98,24 @@ function messageErreur(error: any, defaut: string): string {
   return error?.response?.data?.message || error?.message || defaut;
 }
 
+/** Regroupe les lignes h_permis par titulaire (numéro d'identité, sinon nom + prénom + date de naissance). */
+function regrouperParTitulaire(lignes: PermisResultat[]): TitulaireResultat[] {
+  const groupes = new Map<string, TitulaireResultat>();
+  for (const l of lignes) {
+    const cle = l.numero_identite || `${l.nom}|${l.prenom ?? ''}|${l.date_naissance ?? ''}`;
+    const g = groupes.get(cle);
+    if (g) {
+      g.categories.push(l);
+    } else {
+      groupes.set(cle, { cle, hPermisId: l.id, nom: l.nom, prenom: l.prenom, date_naissance: l.date_naissance, categories: [l] });
+    }
+  }
+  for (const g of groupes.values()) g.categories.sort((a, b) => (a.categorie ?? '').localeCompare(b.categorie ?? ''));
+  return [...groupes.values()];
+}
+
 export const renouvellementService = {
-  async rechercherPermis(criteres: CriteresRecherche): Promise<PermisResultat[]> {
+  async rechercherTitulaires(criteres: CriteresRecherche): Promise<TitulaireResultat[]> {
     const params = Object.fromEntries(
       Object.entries(criteres).filter(([, v]) => typeof v === 'string' && v.trim() !== '').map(([k, v]) => [k, (v as string).trim()]),
     );
@@ -72,8 +123,8 @@ export const renouvellementService = {
       throw new Error('Saisissez au moins un critère : numéro de permis, nom, prénom ou date de naissance.');
     }
     try {
-      const { data } = await axiosClient.get('/h-permis/recherche', { params: { ...params, per_page: 50 } });
-      return (data?.data ?? []) as PermisResultat[];
+      const { data } = await axiosClient.get('/h-permis/recherche', { params: { ...params, per_page: 100 } });
+      return regrouperParTitulaire((data?.data ?? []) as PermisResultat[]);
     } catch (error) {
       throw new Error(messageErreur(error, 'Erreur lors de la recherche.'));
     }
@@ -84,7 +135,7 @@ export const renouvellementService = {
       const { data } = await axiosClient.get(`/renouvellements/permis/${hPermisId}`);
       return { etat: data.data, historique: data.historique ?? [] };
     } catch (error) {
-      throw new Error(messageErreur(error, "Impossible de charger l'état du permis."));
+      throw new Error(messageErreur(error, "Impossible de charger l'état du titulaire."));
     }
   },
 

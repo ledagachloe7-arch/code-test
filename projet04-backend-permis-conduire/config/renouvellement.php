@@ -2,7 +2,8 @@
 
 return [
     /*
-    | Montant des frais de renouvellement (XAF). À confirmer par l'administration.
+    | Frais de renouvellement PAR CATÉGORIE (XAF). Montant total = nb catégories renouvelées × ce montant.
+    | À confirmer par l'administration.
     */
     'montant' => (float) env('RENOUVELLEMENT_MONTANT', 0),
     'devise' => env('RENOUVELLEMENT_DEVISE', 'XAF'),

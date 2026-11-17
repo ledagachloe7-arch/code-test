@@ -5,6 +5,9 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * Un renouvellement = un titulaire + un paiement, couvrant une ou plusieurs catégories.
+ */
 class Renouvellement extends Model
 {
     use HasUuids;
@@ -23,8 +26,8 @@ class Renouvellement extends Model
     protected $keyType = 'string';
 
     /**
-     * Pas de $fillable volontairement large : toutes les écritures passent par
-     * RenouvellementService (dates générées par le serveur, jamais par l'agent).
+     * Aucune affectation de masse : toutes les écritures passent par RenouvellementService
+     * (dates générées par le serveur, jamais par l'agent).
      */
     protected $guarded = ['*'];
 
@@ -32,15 +35,14 @@ class Renouvellement extends Model
     {
         return [
             'montant' => 'decimal:2',
-            'ancienne_date_expiration' => 'date:Y-m-d',
+            'date_naissance' => 'date:Y-m-d',
             'nouvelle_date_delivrance' => 'date:Y-m-d',
-            'nouvelle_date_expiration' => 'date:Y-m-d',
             'date_confirmation_paiement' => 'datetime',
         ];
     }
 
-    public function permis()
+    public function categories()
     {
-        return $this->belongsTo(HPermis::class, 'h_permis_id');
+        return $this->hasMany(RenouvellementCategorie::class, 'renouvellement_id')->orderBy('categorie');
     }
 }

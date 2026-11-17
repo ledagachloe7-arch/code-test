@@ -29,6 +29,7 @@ use App\Http\Controllers\{HEPermisController, ChangePermisController};
 use App\Http\Controllers\Api\AlfrescoCrudController;
 use App\Http\Controllers\Api\MoovPaymentController;
 use App\Http\Controllers\Api\RenouvellementController;
+use App\Http\Controllers\Api\ModificationDemandeController;
 use App\Http\Controllers\Api\MoovRengusVerificationController;
 use App\Http\Controllers\Api\PublicSmsController;
 use App\Http\Controllers\Api\PaiementAirtelCallbackController;
@@ -304,6 +305,17 @@ Route::middleware(['auth.token'])->group(function () {
     Route::get('/renouvellements/permis/{hPermisId}', [RenouvellementController::class, 'etat'])->name('renouvellements.etat');
     Route::post('/renouvellements/permis/{hPermisId}/initier', [RenouvellementController::class, 'initier'])->name('renouvellements.initier');
     Route::get('/renouvellements/{id}', [RenouvellementController::class, 'show'])->name('renouvellements.show');
+
+    // Mise à jour des informations personnelles (demande → validation par un responsable habilité)
+    Route::get('/modifications/a-valider', [ModificationDemandeController::class, 'aValider'])->name('modifications.a-valider');
+    Route::get('/modifications/titulaire/{hPermisId}', [ModificationDemandeController::class, 'fiche'])->name('modifications.fiche');
+    Route::post('/modifications/titulaire/{hPermisId}', [ModificationDemandeController::class, 'store'])->name('modifications.store');
+    Route::post('/modifications/{id}', [ModificationDemandeController::class, 'update'])->name('modifications.update');
+    Route::post('/modifications/{id}/soumettre', [ModificationDemandeController::class, 'soumettre'])->name('modifications.soumettre');
+    Route::delete('/modifications/{id}', [ModificationDemandeController::class, 'destroy'])->name('modifications.destroy');
+    Route::post('/modifications/{id}/approuver', [ModificationDemandeController::class, 'approuver'])->name('modifications.approuver');
+    Route::post('/modifications/{id}/rejeter', [ModificationDemandeController::class, 'rejeter'])->name('modifications.rejeter');
+    Route::get('/modifications/{id}/justificatif', [ModificationDemandeController::class, 'justificatif'])->name('modifications.justificatif');
     // H Permis avec des erreur Routes
     Route::get('/change-permis-default/{nomNumeroPermis}', [HEPermisController::class, 'index']);
     Route::post('/create-date_defaul', [HEPermisController::class, 'store']);

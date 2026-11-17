@@ -6,6 +6,7 @@ import { ArrowLeftIcon, ChevronRightIcon, IdentificationIcon } from '@heroicons/
 import { ROUTES } from '../../../shared/constants';
 import NouvelleDemandeePage from './NouvelleDemandeePage';
 import RenouvellementPage from '../../renouvellement/pages/RenouvellementPage';
+import MiseAJourPage from '../../mise-a-jour/pages/MiseAJourPage';
 
 /**
  * Permis de conduire : circuits Permis rose / Permis vert.
@@ -22,7 +23,7 @@ interface SousCircuit {
    */
   typesDemande?: string[];
   /** Sous-circuit avec son propre écran (hors parcours « Nouvelle demande »). */
-  ecran?: 'renouvellement';
+  ecran?: 'renouvellement' | 'mise-a-jour';
 }
 
 interface Circuit {
@@ -38,9 +39,10 @@ const sousCircuitsCommuns = (
   support: string,
   duplicata?: string[],
   renouvellement?: SousCircuit['ecran'],
+  miseAJour?: SousCircuit['ecran'],
 ): SousCircuit[] => [
   { id: 'duplicata', libelle: 'Duplicata', description: `Duplicata ${support}.`, typesDemande: duplicata },
-  { id: 'mise-a-jour', libelle: 'Mise à jour', description: `Correction des informations ${support}.` },
+  { id: 'mise-a-jour', libelle: 'Mise à jour', description: `Correction des informations ${support}.`, ecran: miseAJour },
   { id: 'renouvellement', libelle: 'Renouvellement', description: `Renouvellement ${support}.`, ecran: renouvellement },
 ];
 
@@ -51,7 +53,7 @@ const CIRCUITS: Circuit[] = [
     description: 'Permis de conduire national',
     couleur: '#c2185b',
     sousCircuits: [
-      ...sousCircuitsCommuns('du permis rose', ['DUPLICATA'], 'renouvellement'),
+      ...sousCircuitsCommuns('du permis rose', ['DUPLICATA'], 'renouvellement', 'mise-a-jour'),
       {
         id: 'informatisation',
         libelle: 'Informatisation permis de conduire',
@@ -140,6 +142,16 @@ const CircuitsPermisPage: React.FC = () => {
   if (circuit && sousCircuit?.ecran === 'renouvellement') {
     return (
       <RenouvellementPage
+        titre={`${circuit.libelle} — ${sousCircuit.libelle}`}
+        couleur={circuit.couleur}
+        onRetour={() => setSousCircuit(null)}
+      />
+    );
+  }
+
+  if (circuit && sousCircuit?.ecran === 'mise-a-jour') {
+    return (
+      <MiseAJourPage
         titre={`${circuit.libelle} — ${sousCircuit.libelle}`}
         couleur={circuit.couleur}
         onRetour={() => setSousCircuit(null)}
