@@ -9,6 +9,7 @@ use Dedoc\Scramble\Attributes\Group;
 use Dedoc\Scramble\Attributes\Response as ScrambleResponse;
 use App\Services\PaiementMoovService;
 use App\Services\PaiementHistoriqueService;
+use App\Services\RenouvellementService;
 use App\Http\Helpers\CentreScopeHelper;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -27,7 +28,8 @@ class MoovPaymentController extends Controller
 {
     public function __construct(
         protected PaiementMoovService $moovService,
-        protected PaiementHistoriqueService $paiementHistoriqueService
+        protected PaiementHistoriqueService $paiementHistoriqueService,
+        protected RenouvellementService $renouvellementService
     ) {
     }
 
@@ -114,6 +116,27 @@ class MoovPaymentController extends Controller
         $originatorId = $parsed['originator_conversation_id'] ?? '';
         $resultCode = $parsed['result_code'] ?? '';
         $transactionId = $parsed['transaction_id'] ?? '';
+
+        // Paiement de renouvellement (R_{renouvellement_id}) : traité par le module Renouvellement.
+        if (str_starts_with($originatorId, 'R_')) {
+            $renouvellementId = substr($originatorId, 2);
+            try {
+                if ($resultCode === '0') {
+                    $this->renouvellementService->confirmerPaiement($renouvellementId, $transactionId ?: null);
+                } else {
+                    $this->renouvellementService->echouer(
+                        $renouvellementId,
+                        'Moov ' . $resultCode . ' : ' . ($parsed['result_desc'] ?? '')
+                    );
+                }
+            } catch (\Throwable $e) {
+                Log::error('[MoovPayment] Erreur traitement callback renouvellement', [
+                    'renouvellement_id' => $renouvellementId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+            return response()->json(['ack' => true], 200);
+        }
 
         if (empty($originatorId) || !str_starts_with($originatorId, 'P_')) {
             Log::warning('[MoovPayment] Callback sans OriginatorConversationID valide');

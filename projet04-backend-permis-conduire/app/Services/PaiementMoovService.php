@@ -181,10 +181,39 @@ XML;
             ];
         }
 
-        $originatorConversationID = 'P_' . $dossier->id;
+        return $this->envoyerInitTrans(
+            'P_' . $dossier->id,
+            $contact,
+            $montant,
+            $currency,
+            (string) $dossier->id,
+            (string) ($dossier->code_paiement ?? '')
+        );
+    }
+
+    /**
+     * Envoie InitTrans_OnlineMerchantPayment pour un identifiant d'origine quelconque.
+     * Préfixes : P_ = dossier, R_ = renouvellement (routage dans le callback).
+     *
+     * @return array{success: bool, message: string, response_code?: string, response_desc?: string, conversation_id?: string, originator_conversation_id?: string, raw?: string}
+     */
+    public function envoyerInitTrans(
+        string $originatorConversationID,
+        string $contact,
+        float $montant,
+        string $currency,
+        string $externalData1,
+        string $externalData2
+    ): array {
+        if (empty($this->baseUrl) || empty($this->password) || empty($this->resultUrl)) {
+            Log::warning('[MoovPayment] Configuration manquante (base_url, password ou result_url)');
+            return [
+                'success' => false,
+                'message' => 'Configuration Moov Money incomplète.',
+            ];
+        }
+
         $amountStr = number_format($montant, 2, '.', '');
-        $externalData1 = (string) $dossier->id;
-        $externalData2 = (string) ($dossier->code_paiement ?? '');
 
         $xml = $this->buildInitTransOnlineMerchantPaymentXml(
             $originatorConversationID,
@@ -206,7 +235,7 @@ XML;
 
             $raw = $response->body();
             Log::info('[MoovPayment] InitTrans_OnlineMerchantPayment response', [
-                'dossier_id' => $dossier->id,
+                'originator_conversation_id' => $originatorConversationID,
                 'status' => $response->status(),
                 'body_length' => strlen($raw),
             ]);
@@ -239,7 +268,7 @@ XML;
                 'raw' => $raw,
             ];
         } catch (\Throwable $e) {
-            Log::error('[MoovPayment] Exception', ['dossier_id' => $dossier->id, 'error' => $e->getMessage()]);
+            Log::error('[MoovPayment] Exception', ['originator_conversation_id' => $originatorConversationID, 'error' => $e->getMessage()]);
             return [
                 'success' => false,
                 'message' => 'Erreur de connexion au service Moov: ' . $e->getMessage(),

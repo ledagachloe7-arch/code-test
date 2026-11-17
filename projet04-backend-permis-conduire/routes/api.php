@@ -28,6 +28,7 @@ use App\Http\Controllers\{HEPermisController, ChangePermisController};
 
 use App\Http\Controllers\Api\AlfrescoCrudController;
 use App\Http\Controllers\Api\MoovPaymentController;
+use App\Http\Controllers\Api\RenouvellementController;
 use App\Http\Controllers\Api\MoovRengusVerificationController;
 use App\Http\Controllers\Api\PublicSmsController;
 use App\Http\Controllers\Api\PaiementAirtelCallbackController;
@@ -298,6 +299,11 @@ Route::middleware(['auth.token'])->group(function () {
     Route::get('/h-permis/recherche', [HPermisController::class, 'searchLike']);
     Route::post('/h-permis/recherche', [HPermisController::class, 'searchLike']);
     Route::post('/create', [HPermisController::class, 'store']);
+
+    // Renouvellement (dates calculées et contrôlées côté serveur)
+    Route::get('/renouvellements/permis/{hPermisId}', [RenouvellementController::class, 'etat'])->name('renouvellements.etat');
+    Route::post('/renouvellements/permis/{hPermisId}/initier', [RenouvellementController::class, 'initier'])->name('renouvellements.initier');
+    Route::get('/renouvellements/{id}', [RenouvellementController::class, 'show'])->name('renouvellements.show');
     // H Permis avec des erreur Routes
     Route::get('/change-permis-default/{nomNumeroPermis}', [HEPermisController::class, 'index']);
     Route::post('/create-date_defaul', [HEPermisController::class, 'store']);

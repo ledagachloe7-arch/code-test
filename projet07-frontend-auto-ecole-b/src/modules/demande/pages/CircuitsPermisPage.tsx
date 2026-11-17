@@ -5,6 +5,7 @@ import { alpha } from '@mui/material/styles';
 import { ArrowLeftIcon, ChevronRightIcon, IdentificationIcon } from '@heroicons/react/24/outline';
 import { ROUTES } from '../../../shared/constants';
 import NouvelleDemandeePage from './NouvelleDemandeePage';
+import RenouvellementPage from '../../renouvellement/pages/RenouvellementPage';
 
 /**
  * Permis de conduire : circuits Permis rose / Permis vert.
@@ -20,6 +21,8 @@ interface SousCircuit {
    * Absent = sous-circuit pas encore branché (affiché « À venir », non cliquable).
    */
   typesDemande?: string[];
+  /** Sous-circuit avec son propre écran (hors parcours « Nouvelle demande »). */
+  ecran?: 'renouvellement';
 }
 
 interface Circuit {
@@ -31,10 +34,14 @@ interface Circuit {
 }
 
 /** Sous-circuits communs : Duplicata, Mise à jour, Renouvellement, puis un sous-circuit propre au circuit. */
-const sousCircuitsCommuns = (support: string, duplicata?: string[]): SousCircuit[] => [
+const sousCircuitsCommuns = (
+  support: string,
+  duplicata?: string[],
+  renouvellement?: SousCircuit['ecran'],
+): SousCircuit[] => [
   { id: 'duplicata', libelle: 'Duplicata', description: `Duplicata ${support}.`, typesDemande: duplicata },
   { id: 'mise-a-jour', libelle: 'Mise à jour', description: `Correction des informations ${support}.` },
-  { id: 'renouvellement', libelle: 'Renouvellement', description: `Renouvellement ${support}.` },
+  { id: 'renouvellement', libelle: 'Renouvellement', description: `Renouvellement ${support}.`, ecran: renouvellement },
 ];
 
 const CIRCUITS: Circuit[] = [
@@ -44,7 +51,7 @@ const CIRCUITS: Circuit[] = [
     description: 'Permis de conduire national',
     couleur: '#c2185b',
     sousCircuits: [
-      ...sousCircuitsCommuns('du permis rose', ['DUPLICATA']),
+      ...sousCircuitsCommuns('du permis rose', ['DUPLICATA'], 'renouvellement'),
       {
         id: 'informatisation',
         libelle: 'Informatisation permis de conduire',
@@ -129,6 +136,17 @@ const CircuitsPermisPage: React.FC = () => {
   const [circuit, setCircuit] = useState<Circuit | null>(null);
   const [sousCircuit, setSousCircuit] = useState<SousCircuit | null>(null);
 
+  // Sous-circuit avec écran dédié (renouvellement : contrôle d'expiration + paiement + dates serveur).
+  if (circuit && sousCircuit?.ecran === 'renouvellement') {
+    return (
+      <RenouvellementPage
+        titre={`${circuit.libelle} — ${sousCircuit.libelle}`}
+        couleur={circuit.couleur}
+        onRetour={() => setSousCircuit(null)}
+      />
+    );
+  }
+
   // Sous-circuit choisi : parcours existant, inchangé, limité aux types du sous-circuit.
   if (circuit && sousCircuit?.typesDemande) {
     return (
@@ -190,7 +208,7 @@ const CircuitsPermisPage: React.FC = () => {
                   titre={sc.libelle}
                   description={sc.description}
                   couleur={circuit.couleur}
-                  aVenir={!sc.typesDemande}
+                  aVenir={!sc.typesDemande && !sc.ecran}
                   onClick={() => setSousCircuit(sc)}
                 />
               </Grid>
