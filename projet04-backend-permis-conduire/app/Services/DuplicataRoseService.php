@@ -1,0 +1,293 @@
+<?php
+
+namespace App\Services;
+
+use App\Exceptions\DuplicataException;
+use App\Models\CneddtShortcode;
+use App\Models\Dossier;
+use App\Models\DuplicataDemande;
+use App\Models\HPermis;
+use App\Models\Referentiel;
+use App\Models\TypeDemande;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+
+/**
+ * Duplicata du permis rose (cadrage v1.0 du 17/11/2026).
+ *
+ * - Shortcode : contrôlé côté serveur à partir des codes CNEDDT conservés lors des transferts (cneddt_shortcodes),
+ *   rattachés au titulaire par numéro de pièce ou numéro de permis.
+ * - Création : nouveau dossier DUPLICATA lié au permis source ; le permis source n'est jamais modifié.
+ */
+class DuplicataRoseService
+{
+    public const SHORTCODE_ACTIF = 'ACTIF';
+    public const SHORTCODE_ABSENT = 'ABSENT';
+    public const SHORTCODE_NON_VERIFIE = 'NON_VERIFIE';
+    public const SHORTCODE_A_REGULARISER = 'A_REGULARISER';
+
+    // ------------------------------------------------------------------
+    // Conservation des shortcodes CNEDDT
+    // ------------------------------------------------------------------
+
+    /**
+     * Enregistre le shortcode renvoyé par la CNEDDT après le transfert réussi d'un dossier (idempotent par dossier).
+     */
+    public function enregistrerShortcodeTransfert(Dossier $dossier, string $shortcode, ?array $reponseCneddt): void
+    {
+        $shortcode = trim($shortcode);
+        if ($shortcode === '') {
+            return;
+        }
+
+        try {
+            $dossier->loadMissing('candidat.personne');
+            $candidat = $dossier->candidat;
+
+            $s = CneddtShortcode::firstOrNew(['dossier_id' => $dossier->id]);
+            $s->forceFill([
+                'shortcode' => $shortcode,
+                'statut' => CneddtShortcode::STATUT_ACTIF,
+                'source' => 'TRANSFERT_CNEDDT',
+                'candidat_id' => $candidat?->id,
+                'numero_piece' => $candidat?->numero_piece,
+                'numero_permis' => $dossier->numero_permis,
+                'nom' => $candidat?->personne?->nom,
+                'prenom' => $candidat?->personne?->prenom,
+                'date_naissance' => $candidat?->date_naissance,
+                'donnees_cneddt' => $reponseCneddt,
+            ])->save();
+
+            Log::info('[Duplicata] Shortcode CNEDDT conservé', ['dossier_id' => $dossier->id, 'candidat_id' => $candidat?->id]);
+        } catch (\Throwable $e) {
+            // Ne jamais faire échouer le transfert CNEDDT pour cette conservation.
+            Log::error('[Duplicata] Échec conservation shortcode CNEDDT', ['dossier_id' => $dossier->id, 'error' => $e->getMessage()]);
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Contrôle du shortcode du titulaire
+    // ------------------------------------------------------------------
+
+    private static function normaliserNumero(?string $n): string
+    {
+        return strtoupper(preg_replace('/[^A-Za-z0-9]/', '', (string) $n));
+    }
+
+    public static function estPermisRose(HPermis $p): bool
+    {
+        return self::normaliserNumero($p->type_permis) !== 'FICHEENREGISTREMENT';
+    }
+
+    /**
+     * Contrôle porté sur la personne titulaire (toutes ses lignes h_permis), pas seulement sur le numéro du permis.
+     *
+     * @return array{statut: string, message: string, shortcode: ?CneddtShortcode}
+     */
+    public function controleShortcode(HPermis $permis): array
+    {
+        try {
+            $lignes = ! empty($permis->numero_identite)
+                ? HPermis::where('numero_identite', $permis->numero_identite)->get()
+                : collect([$permis]);
+            $numeros = $lignes->pluck('numero_permis')->filter()->map(fn ($n) => self::normaliserNumero($n))->unique()->values()->all();
+
+            // Rattachement fort : même numéro de pièce d'identité ou un des numéros de permis du titulaire.
+            $forts = CneddtShortcode::query()
+                ->where(function ($q) use ($permis, $numeros) {
+                    if (! empty($permis->numero_identite)) {
+                        $q->orWhere('numero_piece', $permis->numero_identite);
+                    }
+                    if ($numeros) {
+                        $q->orWhereIn(DB::raw("upper(regexp_replace(coalesce(numero_permis, ''), '[^A-Za-z0-9]', '', 'g'))"), $numeros);
+                    }
+                })
+                ->orderByDesc('created_at')
+                ->get();
+
+            $actif = $forts->first(fn (CneddtShortcode $s) => $s->statut === CneddtShortcode::STATUT_ACTIF && $s->candidat_id);
+            if ($actif) {
+                return $this->resultat(self::SHORTCODE_ACTIF, 'Shortcode vérifié. Vous pouvez poursuivre la demande.', $actif);
+            }
+            if ($forts->isNotEmpty()) {
+                $s = $forts->first();
+                $raison = $s->statut !== CneddtShortcode::STATUT_ACTIF
+                    ? "Shortcode présent mais au statut « {$s->statut} »."
+                    : 'Shortcode présent mais non rattaché à un candidat.';
+                return $this->resultat(self::SHORTCODE_A_REGULARISER, $raison . ' Une régularisation est nécessaire avant de poursuivre.', $s);
+            }
+
+            // Rattachement faible (nom + prénom + date de naissance seulement) : à confirmer, jamais automatique.
+            if ($permis->date_naissance) {
+                $faible = CneddtShortcode::query()
+                    ->where('nom', 'ILIKE', (string) $permis->nom)
+                    ->where('prenom', 'ILIKE', (string) $permis->prenom)
+                    ->whereDate('date_naissance', Carbon::parse($permis->date_naissance)->toDateString())
+                    ->first();
+                if ($faible) {
+                    return $this->resultat(
+                        self::SHORTCODE_A_REGULARISER,
+                        "Un shortcode existe pour une personne de même identité, mais son rattachement à ce titulaire (pièce d'identité / permis) n'est pas confirmé. Vérification nécessaire.",
+                        $faible
+                    );
+                }
+            }
+
+            return $this->resultat(
+                self::SHORTCODE_ABSENT,
+                "Aucun shortcode associé à ce titulaire. L'enrôlement et le paiement sont nécessaires avant de poursuivre.",
+                null
+            );
+        } catch (\Throwable $e) {
+            Log::error('[Duplicata] Contrôle shortcode indisponible', ['h_permis_id' => $permis->id, 'error' => $e->getMessage()]);
+            return $this->resultat(self::SHORTCODE_NON_VERIFIE, "Le statut du shortcode n'a pas pu être vérifié. Réessayez.", null);
+        }
+    }
+
+    private function resultat(string $statut, string $message, ?CneddtShortcode $s): array
+    {
+        return ['statut' => $statut, 'message' => $message, 'shortcode' => $s];
+    }
+
+    // ------------------------------------------------------------------
+    // Création de la demande de duplicata
+    // ------------------------------------------------------------------
+
+    /**
+     * @param object|null $agent Utilisateur authentifié (id, email, centre_id)
+     */
+    public function creer(string $hPermisId, array $data, ?UploadedFile $justificatif, $agent): DuplicataDemande
+    {
+        $motif = strtoupper((string) ($data['motif'] ?? ''));
+        if (! array_key_exists($motif, config('duplicata.motifs'))) {
+            throw new DuplicataException('Le motif est obligatoire.', 422);
+        }
+        $precision = trim((string) ($data['motif_precision'] ?? ''));
+        if ($motif === 'AUTRE' && $precision === '') {
+            throw new DuplicataException('La précision du motif est obligatoire pour « Autre ».', 422);
+        }
+        if (in_array($motif, config('duplicata.motifs_justificatif_obligatoire'), true) && ! $justificatif) {
+            throw new DuplicataException('Un justificatif est obligatoire pour ce motif.', 422);
+        }
+
+        $typeDemandeId = TypeDemande::where('name', config('duplicata.type_demande'))->value('id');
+        if (! $typeDemandeId) {
+            throw new DuplicataException('Type de demande DUPLICATA introuvable en base.', 500);
+        }
+
+        $cheminFichier = null;
+        try {
+            $demande = DB::transaction(function () use ($hPermisId, $motif, $precision, $data, $justificatif, $agent, $typeDemandeId, &$cheminFichier) {
+                // Verrou sur le permis source : protège contre les doubles clics / soumissions simultanées.
+                $permis = HPermis::whereKey($hPermisId)->lockForUpdate()->first();
+                if (! $permis) {
+                    throw new DuplicataException('Permis source introuvable.', 404);
+                }
+                if (! self::estPermisRose($permis)) {
+                    throw new DuplicataException("Ce permis est une fiche d'enregistrement (permis vert) : non éligible au duplicata rose.", 422);
+                }
+
+                // Anti-doublon : une seule demande en cours par permis source.
+                $enCours = DuplicataDemande::query()
+                    ->join('dossiers', 'dossiers.id', '=', 'duplicata_demandes.dossier_id')
+                    ->where('duplicata_demandes.permis_source_id', $permis->id)
+                    ->whereNotIn('dossiers.statut', config('duplicata.statuts_dossier_clos'))
+                    ->value('dossiers.numero');
+                if ($enCours !== null) {
+                    throw new DuplicataException("Une demande de duplicata est déjà en cours pour ce permis (dossier {$enCours}).", 409);
+                }
+
+                // Contrôle shortcode recalculé côté serveur (jamais celui envoyé par le navigateur).
+                $controle = $this->controleShortcode($permis);
+                if ($controle['statut'] !== self::SHORTCODE_ACTIF) {
+                    throw new DuplicataException($controle['message'], $controle['statut'] === self::SHORTCODE_NON_VERIFIE ? 503 : 422);
+                }
+                $shortcode = $controle['shortcode'];
+
+                $centreId = $agent->centre_id ?? null;
+                $dossier = Dossier::create([
+                    'candidat_id' => $shortcode->candidat_id,
+                    'type_demande_id' => $typeDemandeId,
+                    'statut' => config('duplicata.statut_initial'),
+                    'utilisateur_id' => $agent->id ?? null,
+                    'centre_id' => $centreId,
+                    'province_id' => $centreId ? Referentiel::query()->whereKey($centreId)->value('parent_id') : null,
+                    'numero_permis' => $permis->numero_permis,
+                    'lieu_de_dobtention_du_permis' => $permis->lieu_obtention,
+                    'date_de_dobtention_du_permis' => $permis->date_obtention,
+                    'date_expiration' => $permis->date_validite,
+                    'data_categorie' => [[
+                        'classe' => $permis->categorie,
+                        'ville' => $permis->lieu_obtention,
+                        'valable_du' => $permis->date_obtention,
+                        'jusqu_au' => $permis->date_validite,
+                    ]],
+                    'expired' => false,
+                    'suspended' => false,
+                ]);
+                $dossier->numero = $this->numeroDossier();
+                $dossier->save();
+
+                $d = new DuplicataDemande();
+                $d->forceFill([
+                    'dossier_id' => $dossier->id,
+                    'permis_source_id' => $permis->id,
+                    'numero_permis_source' => $permis->numero_permis,
+                    'numero_identite' => $permis->numero_identite,
+                    'candidat_id' => $shortcode->candidat_id,
+                    'resultat_controle_shortcode' => $controle['statut'],
+                    'shortcode_id' => $shortcode->id,
+                    'shortcode' => $shortcode->shortcode,
+                    'motif_duplicata' => $motif,
+                    'motif_precision' => $motif === 'AUTRE' ? mb_substr($precision, 0, 255) : null,
+                    'observations' => mb_substr(trim((string) ($data['observations'] ?? '')), 0, (int) config('duplicata.observations_max')) ?: null,
+                    'created_by' => $agent->id ?? null,
+                    'created_by_email' => $agent->email ?? null,
+                ]);
+
+                if ($justificatif) {
+                    $ext = strtolower($justificatif->getClientOriginalExtension() ?: $justificatif->extension());
+                    $cheminFichier = Storage::disk(config('duplicata.disk'))->putFileAs(
+                        'justificatifs-duplicata/' . now()->format('Y/m'),
+                        $justificatif,
+                        $dossier->id . '.' . $ext
+                    );
+                    $d->forceFill([
+                        'justificatif_path' => $cheminFichier,
+                        'justificatif_nom' => mb_substr($justificatif->getClientOriginalName(), 0, 255),
+                        'justificatif_mime' => $justificatif->getMimeType(),
+                    ]);
+                }
+                $d->save();
+
+                return $d;
+            });
+        } catch (\Throwable $e) {
+            if ($cheminFichier) {
+                Storage::disk(config('duplicata.disk'))->delete($cheminFichier);
+            }
+            throw $e;
+        }
+
+        Log::info('[Duplicata] Demande de duplicata rose créée', [
+            'duplicata_id' => $demande->id,
+            'dossier_id' => $demande->dossier_id,
+            'permis_source_id' => $demande->permis_source_id,
+            'motif' => $demande->motif_duplicata,
+            'agent_id' => $agent->id ?? null,
+        ]);
+
+        return $demande->load('dossier');
+    }
+
+    private function numeroDossier(): string
+    {
+        $l = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        $c = '0123456789';
+        return $l[random_int(0, 25)] . $l[random_int(0, 25)] . $c[random_int(0, 9)] . $c[random_int(0, 9)]
+            . $l[random_int(0, 25)] . $c[random_int(0, 9)];
+    }
+}

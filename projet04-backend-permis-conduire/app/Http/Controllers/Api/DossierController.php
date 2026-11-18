@@ -1376,6 +1376,9 @@ class DossierController extends Controller
 
             $dataCneddt = $r['result']['data'] ?? [];
             $shortcode = DossierService::cneddtCashierShortCodeFromResponse(is_array($dataCneddt) ? $dataCneddt : null);
+            // Conservation du shortcode (source du contrôle shortcode du duplicata rose).
+            app(\App\Services\DuplicataRoseService::class)
+                ->enregistrerShortcodeTransfert($dossier, $shortcode, is_array($dataCneddt) ? $dataCneddt : null);
             $phone = $dossier->candidat?->personne?->utilisateur?->telephone
                 ?? $dossier->candidat?->personne?->contact
                 ?? null;

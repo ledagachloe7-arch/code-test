@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Exceptions\ModificationException;
 use App\Models\HPermis;
 use App\Models\ModificationDemande;
+use App\Models\ModificationDemandeLigne;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -16,13 +17,19 @@ use Illuminate\Support\Str;
 /**
  * Mise à jour des informations personnelles (cahier des charges §4-7).
  *
- * Circuit : Brouillon → Soumise → Approuvée (donnée active mise à jour) | Rejetée (dossier inchangé).
+ * Une demande peut corriger plusieurs champs (lignes), avec un motif et un justificatif communs.
+ * Circuit : Brouillon → Soumise → Approuvée (toutes les lignes appliquées) | Rejetée (dossier inchangé).
  * - L'agent ne modifie jamais directement les données : il soumet une demande.
  * - Un responsable habilité, distinct du demandeur, approuve ou rejette (motif obligatoire en cas de rejet).
- * - L'ancienne valeur est conservée dans la demande (historique non modifiable).
+ * - Si une ligne porte sur la date de naissance, toute la demande requiert la validation renforcée.
+ * - Les anciennes valeurs sont conservées dans les lignes (historique non modifiable).
  */
 class ModificationDemandeService
 {
+    /** Fichiers écrits / remplacés pendant la transaction en cours. */
+    private array $fichiersNouveaux = [];
+    private array $fichiersRemplaces = [];
+
     // ------------------------------------------------------------------
     // Titulaire
     // ------------------------------------------------------------------
@@ -95,7 +102,8 @@ class ModificationDemandeService
                 'date_validite' => $p->date_validite,
             ])->values(),
             'champs' => config('modifications.champs'),
-            'demandes' => ModificationDemande::where('numero_identite', $t->numero_identite)
+            'demandes' => ModificationDemande::with('lignes')
+                ->where('numero_identite', $t->numero_identite)
                 ->orderByDesc('created_at')->get(),
             'peut_valider' => $this->estValidateur($agent),
         ];
@@ -131,8 +139,10 @@ class ModificationDemandeService
         if (! $this->estValidateur($agent)) {
             return "Vous n'êtes pas habilité à valider les demandes de modification.";
         }
-        if ($d->champ === 'date_naissance' && ! self::roleDans($agent, config('modifications.roles_validateurs_date_naissance'))) {
-            return 'La modification de la date de naissance requiert une validation renforcée (profil habilité : '
+        $d->loadMissing('lignes');
+        if ($d->lignes->contains('champ', 'date_naissance')
+            && ! self::roleDans($agent, config('modifications.roles_validateurs_date_naissance'))) {
+            return 'Cette demande modifie la date de naissance : validation renforcée requise (profil habilité : '
                 . implode(', ', config('modifications.roles_validateurs_date_naissance')) . ').';
         }
         if ($d->demandeur_id !== null && (string) $d->demandeur_id === (string) ($agent->id ?? '')) {
@@ -169,13 +179,14 @@ class ModificationDemandeService
     // ------------------------------------------------------------------
 
     /**
-     * Contrôle et normalise la nouvelle valeur selon le champ.
+     * Contrôle et normalise la nouvelle valeur d'un champ.
      *
      * @return array{0: string, 1: array|null} [nouvelle_valeur, details]
      */
     public function normaliserValeur(string $champ, array $data): array
     {
-        if (! array_key_exists($champ, config('modifications.champs'))) {
+        $libelle = config('modifications.champs')[$champ] ?? null;
+        if ($libelle === null) {
             throw new ModificationException('Champ non modifiable.', 422);
         }
 
@@ -184,7 +195,7 @@ class ModificationDemandeService
             case 'prenom':
                 $v = trim((string) ($data['nouvelle_valeur'] ?? ''));
                 if ($v === '' || mb_strlen($v) > 50) {
-                    throw new ModificationException('La nouvelle valeur est obligatoire (50 caractères maximum).', 422);
+                    throw new ModificationException("{$libelle} : la nouvelle valeur est obligatoire (50 caractères maximum).", 422);
                 }
                 return [$champ === 'nom' ? mb_strtoupper($v) : $v, null];
 
@@ -204,7 +215,7 @@ class ModificationDemandeService
                 $province = trim((string) ($data['province'] ?? ''));
                 $pays = trim((string) ($data['pays'] ?? ''));
                 if ($ville === '' || $pays === '') {
-                    throw new ModificationException('La ville/localité et le pays sont obligatoires.', 422);
+                    throw new ModificationException('Lieu de naissance : la ville/localité et le pays sont obligatoires.', 422);
                 }
                 if (mb_strlen($ville) > 100) {
                     throw new ModificationException('Ville/localité : 100 caractères maximum.', 422);
@@ -214,12 +225,60 @@ class ModificationDemandeService
             case 'nationalite':
                 $v = trim((string) ($data['nouvelle_valeur'] ?? ''));
                 if ($v === '' || mb_strlen($v) > 30) {
-                    throw new ModificationException('La nouvelle nationalité est obligatoire (30 caractères maximum).', 422);
+                    throw new ModificationException('Nationalité : la nouvelle valeur est obligatoire (30 caractères maximum).', 422);
                 }
                 return [$v, null];
         }
 
         throw new ModificationException('Champ non modifiable.', 422);
+    }
+
+    /**
+     * Contrôle l'ensemble des lignes saisies : au moins une, pas deux fois le même champ,
+     * et au moins une valeur réellement différente de la valeur actuelle.
+     *
+     * @return array<int, array{champ: string, ancienne: ?string, nouvelle: string, details: ?array}>
+     */
+    private function preparerLignes(array $lignesSaisies, HPermis $titulaire): array
+    {
+        if (count($lignesSaisies) === 0) {
+            throw new ModificationException('Ajoutez au moins un champ à modifier.', 422);
+        }
+
+        $resultat = [];
+        $vus = [];
+        foreach ($lignesSaisies as $l) {
+            $champ = (string) ($l['champ'] ?? '');
+            if (isset($vus[$champ])) {
+                $libelle = config('modifications.champs')[$champ] ?? $champ;
+                throw new ModificationException("Le champ « {$libelle} » est saisi deux fois.", 422);
+            }
+            $vus[$champ] = true;
+
+            [$nouvelle, $details] = $this->normaliserValeur($champ, $l);
+            $ancienne = $this->valeurActuelle($titulaire, $champ);
+            if ($champ !== 'lieu_naissance' && $ancienne !== null && mb_strtolower($ancienne) === mb_strtolower($nouvelle)) {
+                $libelle = config('modifications.champs')[$champ];
+                throw new ModificationException("{$libelle} : la nouvelle valeur est identique à la valeur actuelle.", 422);
+            }
+            $resultat[] = ['champ' => $champ, 'ancienne' => $ancienne, 'nouvelle' => $nouvelle, 'details' => $details];
+        }
+
+        return $resultat;
+    }
+
+    private function enregistrerLignes(ModificationDemande $d, array $lignes): void
+    {
+        ModificationDemandeLigne::where('demande_id', $d->id)->delete();
+        foreach ($lignes as $l) {
+            (new ModificationDemandeLigne())->forceFill([
+                'demande_id' => $d->id,
+                'champ' => $l['champ'],
+                'ancienne_valeur' => $l['ancienne'],
+                'nouvelle_valeur' => $l['nouvelle'],
+                'details' => $l['details'],
+            ])->save();
+        }
     }
 
     private function stockerJustificatif(ModificationDemande $d, UploadedFile $fichier): void
@@ -244,10 +303,6 @@ class ModificationDemandeService
             'justificatif_mime' => $fichier->getMimeType(),
         ]);
     }
-
-    /** Fichiers écrits / remplacés pendant la transaction en cours. */
-    private array $fichiersNouveaux = [];
-    private array $fichiersRemplaces = [];
 
     /**
      * Exécute $operation en transaction et garde le stockage cohérent avec la base :
@@ -276,81 +331,66 @@ class ModificationDemandeService
     }
 
     /**
-     * Crée une demande (brouillon), puis la soumet si demandé.
+     * Crée une demande (brouillon) pour un ou plusieurs champs, puis la soumet si demandé.
+     * Création + soumission atomiques : si la soumission est refusée, aucun brouillon ni fichier ne reste.
+     *
+     * @param array $data ['lignes' => [['champ', 'nouvelle_valeur'|'ville','province','pays'], ...], 'motif']
      */
     public function creer(string $hPermisId, array $data, ?UploadedFile $justificatif, $agent, bool $soumettre): ModificationDemande
     {
-        // Création + soumission atomiques : si la soumission est refusée, aucun brouillon ni fichier ne reste.
-        return $this->transactionAvecFichiers(fn () => $this->creerSansTransaction($hPermisId, $data, $justificatif, $agent, $soumettre));
-    }
+        return $this->transactionAvecFichiers(function () use ($hPermisId, $data, $justificatif, $agent, $soumettre) {
+            $this->exigerDemandeur($agent);
 
-    private function creerSansTransaction(string $hPermisId, array $data, ?UploadedFile $justificatif, $agent, bool $soumettre): ModificationDemande
-    {
-        $this->exigerDemandeur($agent);
+            $titulaire = $this->lignesDuTitulaire($hPermisId)->first();
+            $lignes = $this->preparerLignes($data['lignes'] ?? [], $titulaire);
 
-        $champ = (string) ($data['champ'] ?? '');
-        [$nouvelle, $details] = $this->normaliserValeur($champ, $data);
+            $d = new ModificationDemande();
+            $d->forceFill([
+                'id' => (string) Str::uuid(),
+                'numero' => 'MOD-' . now()->format('Ymd') . '-' . strtoupper(Str::random(6)),
+                'numero_identite' => $titulaire->numero_identite,
+                'numero_permis' => $titulaire->numero_permis,
+                'nom_titulaire' => $titulaire->nom,
+                'prenom_titulaire' => $titulaire->prenom,
+                'motif' => trim((string) ($data['motif'] ?? '')),
+                'statut' => ModificationDemande::STATUT_BROUILLON,
+                'demandeur_id' => $agent->id ?? null,
+                'demandeur_email' => $agent->email ?? null,
+            ]);
+            if ($justificatif) {
+                $this->stockerJustificatif($d, $justificatif);
+            }
+            $d->save();
+            $this->enregistrerLignes($d, $lignes);
 
-        $titulaire = $this->lignesDuTitulaire($hPermisId)->first();
-        $ancienne = $this->valeurActuelle($titulaire, $champ);
-        if ($ancienne !== null && mb_strtolower($ancienne) === mb_strtolower($nouvelle) && $champ !== 'lieu_naissance') {
-            throw new ModificationException('La nouvelle valeur est identique à la valeur actuelle.', 422);
-        }
+            Log::info('[Modification] Brouillon créé', [
+                'id' => $d->id, 'numero' => $d->numero,
+                'champs' => array_column($lignes, 'champ'), 'agent_id' => $agent->id ?? null,
+            ]);
 
-        $d = new ModificationDemande();
-        $d->forceFill([
-            'id' => (string) Str::uuid(),
-            'numero' => 'MOD-' . now()->format('Ymd') . '-' . strtoupper(Str::random(6)),
-            'numero_identite' => $titulaire->numero_identite,
-            'numero_permis' => $titulaire->numero_permis,
-            'nom_titulaire' => $titulaire->nom,
-            'prenom_titulaire' => $titulaire->prenom,
-            'champ' => $champ,
-            'ancienne_valeur' => $ancienne,
-            'nouvelle_valeur' => $nouvelle,
-            'details' => $details,
-            'motif' => trim((string) ($data['motif'] ?? '')),
-            'statut' => ModificationDemande::STATUT_BROUILLON,
-            'demandeur_id' => $agent->id ?? null,
-            'demandeur_email' => $agent->email ?? null,
-        ]);
-        if ($justificatif) {
-            $this->stockerJustificatif($d, $justificatif);
-        }
-        $d->save();
-
-        Log::info('[Modification] Brouillon créé', ['id' => $d->id, 'numero' => $d->numero, 'champ' => $champ, 'agent_id' => $agent->id ?? null]);
-
-        return $soumettre ? $this->soumettre($d->id, $agent) : $d;
+            return $soumettre ? $this->soumettreSansTransaction($d->id, $agent) : $d->load('lignes');
+        });
     }
 
     public function modifierBrouillon(string $id, array $data, ?UploadedFile $justificatif, $agent, bool $soumettre): ModificationDemande
     {
-        return $this->transactionAvecFichiers(fn () => $this->modifierBrouillonSansTransaction($id, $data, $justificatif, $agent, $soumettre));
-    }
+        return $this->transactionAvecFichiers(function () use ($id, $data, $justificatif, $agent, $soumettre) {
+            $d = ModificationDemande::whereKey($id)->lockForUpdate()->first() ?? throw new ModificationException('Demande introuvable.', 404);
+            $this->exigerAuteur($agent, $d);
 
-    private function modifierBrouillonSansTransaction(string $id, array $data, ?UploadedFile $justificatif, $agent, bool $soumettre): ModificationDemande
-    {
-        $d = ModificationDemande::find($id) ?? throw new ModificationException('Demande introuvable.', 404);
-        $this->exigerAuteur($agent, $d);
+            $titulaire = $this->lignesParIdentite($d->numero_identite)->first()
+                ?? throw new ModificationException('Titulaire introuvable.', 404);
+            $lignes = $this->preparerLignes($data['lignes'] ?? [], $titulaire);
 
-        $champ = (string) ($data['champ'] ?? $d->champ);
-        [$nouvelle, $details] = $this->normaliserValeur($champ, $data);
+            $d->forceFill(['motif' => trim((string) ($data['motif'] ?? $d->motif))]);
+            if ($justificatif) {
+                $this->stockerJustificatif($d, $justificatif);
+            }
+            $d->save();
+            $this->enregistrerLignes($d, $lignes);
 
-        $titulaire = $this->lignesParIdentite($d->numero_identite)->first();
-        $d->forceFill([
-            'champ' => $champ,
-            'ancienne_valeur' => $titulaire ? $this->valeurActuelle($titulaire, $champ) : $d->ancienne_valeur,
-            'nouvelle_valeur' => $nouvelle,
-            'details' => $details,
-            'motif' => trim((string) ($data['motif'] ?? $d->motif)),
-        ]);
-        if ($justificatif) {
-            $this->stockerJustificatif($d, $justificatif);
-        }
-        $d->save();
-
-        return $soumettre ? $this->soumettre($d->id, $agent) : $d;
+            return $soumettre ? $this->soumettreSansTransaction($d->id, $agent) : $d->load('lignes');
+        });
     }
 
     public function supprimerBrouillon(string $id, $agent): void
@@ -360,7 +400,7 @@ class ModificationDemandeService
         if ($d->justificatif_path) {
             Storage::disk(config('modifications.disk'))->delete($d->justificatif_path);
         }
-        $d->delete();
+        $d->delete(); // lignes supprimées en cascade
         Log::info('[Modification] Brouillon supprimé', ['id' => $id, 'agent_id' => $agent->id ?? null]);
     }
 
@@ -369,41 +409,55 @@ class ModificationDemandeService
      */
     public function soumettre(string $id, $agent): ModificationDemande
     {
-        return DB::transaction(function () use ($id, $agent) {
-            $d = ModificationDemande::whereKey($id)->lockForUpdate()->first() ?? throw new ModificationException('Demande introuvable.', 404);
-            $this->exigerAuteur($agent, $d);
+        return DB::transaction(fn () => $this->soumettreSansTransaction($id, $agent));
+    }
 
-            $manquants = [];
-            if (trim((string) $d->nouvelle_valeur) === '') {
-                $manquants[] = 'nouvelle valeur';
-            }
-            if (trim((string) $d->motif) === '') {
-                $manquants[] = 'motif';
-            }
-            if (empty($d->justificatif_path)) {
-                $manquants[] = 'justificatif officiel';
-            }
-            if ($manquants) {
-                throw new ModificationException('Champs obligatoires manquants : ' . implode(', ', $manquants) . '.', 422);
-            }
+    private function soumettreSansTransaction(string $id, $agent): ModificationDemande
+    {
+        $d = ModificationDemande::whereKey($id)->lockForUpdate()->first() ?? throw new ModificationException('Demande introuvable.', 404);
+        $this->exigerAuteur($agent, $d);
+        $d->load('lignes');
 
-            $dejaSoumise = ModificationDemande::where('numero_identite', $d->numero_identite)
-                ->where('champ', $d->champ)
-                ->where('statut', ModificationDemande::STATUT_SOUMISE)
-                ->exists();
-            if ($dejaSoumise) {
-                throw new ModificationException("Une demande de modification « {$d->champ_libelle} » est déjà en attente de validation pour ce titulaire.", 409);
-            }
+        $manquants = [];
+        if ($d->lignes->isEmpty()) {
+            $manquants[] = 'au moins un champ à modifier';
+        }
+        if (trim((string) $d->motif) === '') {
+            $manquants[] = 'motif';
+        }
+        if (empty($d->justificatif_path)) {
+            $manquants[] = 'justificatif officiel';
+        }
+        if ($manquants) {
+            throw new ModificationException('Champs obligatoires manquants : ' . implode(', ', $manquants) . '.', 422);
+        }
 
-            $d->forceFill([
-                'statut' => ModificationDemande::STATUT_SOUMISE,
-                'date_soumission' => now(),
-            ])->save();
+        // Verrou sur le titulaire : deux soumissions simultanées ne peuvent pas viser le même champ.
+        $this->lignesParIdentite($d->numero_identite, true);
+        $conflit = ModificationDemandeLigne::query()
+            ->join('modification_demandes as md', 'md.id', '=', 'modification_demande_lignes.demande_id')
+            ->where('md.numero_identite', $d->numero_identite)
+            ->where('md.statut', ModificationDemande::STATUT_SOUMISE)
+            ->where('md.id', '!=', $d->id)
+            ->whereIn('modification_demande_lignes.champ', $d->lignes->pluck('champ'))
+            ->select('modification_demande_lignes.champ', 'md.numero')
+            ->first();
+        if ($conflit) {
+            $libelle = config('modifications.champs')[$conflit->champ] ?? $conflit->champ;
+            throw new ModificationException("Le champ « {$libelle} » fait déjà l'objet d'une demande en attente de validation ({$conflit->numero}).", 409);
+        }
 
-            Log::info('[Modification] Demande soumise', ['id' => $d->id, 'numero' => $d->numero, 'champ' => $d->champ, 'agent_id' => $agent->id ?? null]);
+        $d->forceFill([
+            'statut' => ModificationDemande::STATUT_SOUMISE,
+            'date_soumission' => now(),
+        ])->save();
 
-            return $d;
-        });
+        Log::info('[Modification] Demande soumise', [
+            'id' => $d->id, 'numero' => $d->numero,
+            'champs' => $d->lignes->pluck('champ')->all(), 'agent_id' => $agent->id ?? null,
+        ]);
+
+        return $d;
     }
 
     // ------------------------------------------------------------------
@@ -412,7 +466,8 @@ class ModificationDemandeService
 
     public function aValider($agent)
     {
-        return ModificationDemande::where('statut', ModificationDemande::STATUT_SOUMISE)
+        return ModificationDemande::with('lignes')
+            ->where('statut', ModificationDemande::STATUT_SOUMISE)
             ->orderBy('date_soumission')
             ->get()
             ->map(function (ModificationDemande $d) use ($agent) {
@@ -422,7 +477,7 @@ class ModificationDemandeService
     }
 
     /**
-     * Approuve la demande et met à jour la donnée active sur toutes les catégories du titulaire.
+     * Approuve la demande et applique toutes ses lignes sur toutes les catégories du titulaire.
      */
     public function approuver(string $id, $agent, ?string $commentaire): ModificationDemande
     {
@@ -431,26 +486,31 @@ class ModificationDemandeService
             if ($d->statut !== ModificationDemande::STATUT_SOUMISE) {
                 throw new ModificationException('Seule une demande soumise peut être approuvée.', 422);
             }
+            $d->load('lignes');
             if ($refus = $this->refusDecision($agent, $d)) {
                 throw new ModificationException($refus, 403);
             }
 
-            $lignes = $this->lignesParIdentite($d->numero_identite, true);
-            if ($lignes->isEmpty()) {
+            $permis = $this->lignesParIdentite($d->numero_identite, true);
+            if ($permis->isEmpty()) {
                 throw new ModificationException('Titulaire introuvable.', 404);
             }
 
-            // La donnée a-t-elle changé depuis la demande ? Si oui, refuser l'application silencieuse.
-            $actuelle = $this->valeurActuelle($lignes->first(), $d->champ);
-            if ((string) $actuelle !== (string) $d->ancienne_valeur) {
-                throw new ModificationException(
-                    "La valeur actuelle ({$actuelle}) a changé depuis la demande ({$d->ancienne_valeur}). Rejetez cette demande et créez-en une nouvelle.",
-                    409
-                );
+            // Une donnée a-t-elle changé depuis la demande ? Si oui, refuser l'application silencieuse.
+            foreach ($d->lignes as $l) {
+                $actuelle = $this->valeurActuelle($permis->first(), $l->champ);
+                if ((string) $actuelle !== (string) $l->ancienne_valeur) {
+                    throw new ModificationException(
+                        "{$l->champ_libelle} : la valeur actuelle ({$actuelle}) a changé depuis la demande ({$l->ancienne_valeur}). Rejetez cette demande et créez-en une nouvelle.",
+                        409
+                    );
+                }
             }
 
-            foreach ($lignes as $p) {
-                $p->{$d->champ} = $d->nouvelle_valeur;
+            foreach ($permis as $p) {
+                foreach ($d->lignes as $l) {
+                    $p->{$l->champ} = $l->nouvelle_valeur;
+                }
                 $p->save();
             }
 
@@ -465,9 +525,11 @@ class ModificationDemandeService
             ])->save();
 
             Log::info('[Modification] Demande approuvée et appliquée', [
-                'id' => $d->id, 'numero' => $d->numero, 'champ' => $d->champ,
-                'ancienne_valeur' => $d->ancienne_valeur, 'nouvelle_valeur' => $d->nouvelle_valeur,
-                'lignes_h_permis' => $lignes->count(), 'validateur_id' => $agent->id ?? null,
+                'id' => $d->id, 'numero' => $d->numero,
+                'lignes' => $d->lignes->map(fn ($l) => [
+                    'champ' => $l->champ, 'ancienne' => $l->ancienne_valeur, 'nouvelle' => $l->nouvelle_valeur,
+                ])->all(),
+                'lignes_h_permis' => $permis->count(), 'validateur_id' => $agent->id ?? null,
             ]);
 
             return $d;
@@ -489,6 +551,7 @@ class ModificationDemandeService
             if ($d->statut !== ModificationDemande::STATUT_SOUMISE) {
                 throw new ModificationException('Seule une demande soumise peut être rejetée.', 422);
             }
+            $d->load('lignes');
             if ($refus = $this->refusDecision($agent, $d)) {
                 throw new ModificationException($refus, 403);
             }

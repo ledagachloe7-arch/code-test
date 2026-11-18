@@ -33,11 +33,12 @@ class ModificationDemandeController extends Controller
     private function reglesSaisie(): array
     {
         return [
-            'champ' => 'required|string|in:' . implode(',', array_keys(config('modifications.champs'))),
-            'nouvelle_valeur' => 'nullable|string|max:100',
-            'ville' => 'nullable|string|max:100',
-            'province' => 'nullable|string|max:100',
-            'pays' => 'nullable|string|max:100',
+            'lignes' => 'required|array|min:1|max:' . count(config('modifications.champs')),
+            'lignes.*.champ' => 'required|string|distinct|in:' . implode(',', array_keys(config('modifications.champs'))),
+            'lignes.*.nouvelle_valeur' => 'nullable|string|max:100',
+            'lignes.*.ville' => 'nullable|string|max:100',
+            'lignes.*.province' => 'nullable|string|max:100',
+            'lignes.*.pays' => 'nullable|string|max:100',
             'motif' => 'nullable|string|max:2000',
             'justificatif' => 'nullable|file|max:' . config('modifications.justificatif_max_ko')
                 . '|mimes:' . implode(',', config('modifications.justificatif_types')),
@@ -55,7 +56,7 @@ class ModificationDemandeController extends Controller
         }
     }
 
-    #[Endpoint(title: 'Créer une demande de modification', description: 'multipart/form-data : champ, nouvelle_valeur (ou ville/province/pays pour le lieu de naissance), motif, justificatif (pdf/jpg/png), soumettre (true = soumettre directement, sinon brouillon).')]
+    #[Endpoint(title: 'Créer une demande de modification', description: 'multipart/form-data : lignes[i][champ], lignes[i][nouvelle_valeur] (ou lignes[i][ville|province|pays] pour le lieu de naissance) — plusieurs champs possibles —, motif, justificatif (pdf/jpg/png), soumettre (true = soumettre directement, sinon brouillon).')]
     public function store(Request $request, string $hPermisId): JsonResponse
     {
         $data = $request->validate($this->reglesSaisie());

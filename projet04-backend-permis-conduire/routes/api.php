@@ -30,6 +30,7 @@ use App\Http\Controllers\Api\AlfrescoCrudController;
 use App\Http\Controllers\Api\MoovPaymentController;
 use App\Http\Controllers\Api\RenouvellementController;
 use App\Http\Controllers\Api\ModificationDemandeController;
+use App\Http\Controllers\Api\DuplicataRoseController;
 use App\Http\Controllers\Api\MoovRengusVerificationController;
 use App\Http\Controllers\Api\PublicSmsController;
 use App\Http\Controllers\Api\PaiementAirtelCallbackController;
@@ -316,6 +317,10 @@ Route::middleware(['auth.token'])->group(function () {
     Route::post('/modifications/{id}/approuver', [ModificationDemandeController::class, 'approuver'])->name('modifications.approuver');
     Route::post('/modifications/{id}/rejeter', [ModificationDemandeController::class, 'rejeter'])->name('modifications.rejeter');
     Route::get('/modifications/{id}/justificatif', [ModificationDemandeController::class, 'justificatif'])->name('modifications.justificatif');
+
+    // Duplicata du permis rose (contrôle shortcode + création du dossier lié au permis source)
+    Route::get('/duplicata-rose/permis/{hPermisId}/shortcode', [DuplicataRoseController::class, 'shortcode'])->name('duplicata-rose.shortcode');
+    Route::post('/duplicata-rose', [DuplicataRoseController::class, 'store'])->middleware('throttle:10,1')->name('duplicata-rose.store');
     // H Permis avec des erreur Routes
     Route::get('/change-permis-default/{nomNumeroPermis}', [HEPermisController::class, 'index']);
     Route::post('/create-date_defaul', [HEPermisController::class, 'store']);

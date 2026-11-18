@@ -22,7 +22,7 @@ import {
 import toast from 'react-hot-toast';
 import { formatDateHeure } from '../../renouvellement/components/RechercheTitulaire';
 import { modificationService, type ModificationDemande } from '../services/modification.service';
-import { afficherValeur, ouvrirJustificatif } from './HistoriqueModifications';
+import { ListeCorrections, ouvrirJustificatif } from './HistoriqueModifications';
 
 interface Props {
   /** Appelé après une décision (pour rafraîchir le compteur / la fiche). */
@@ -45,8 +45,8 @@ const DemandesAValider: React.FC<Props> = ({ onDecision }) => {
       const res = await modificationService.aValider();
       setDemandes(res.data);
       setPeutValider(res.peut_valider);
-    } catch (err: any) {
-      toast.error(err.message);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Une erreur est survenue.');
     } finally {
       setChargement(false);
     }
@@ -68,8 +68,8 @@ const DemandesAValider: React.FC<Props> = ({ onDecision }) => {
       setTexte('');
       await charger();
       onDecision?.();
-    } catch (err: any) {
-      toast.error(err.message);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Une erreur est survenue.');
     } finally {
       setEnvoi(false);
     }
@@ -90,9 +90,7 @@ const DemandesAValider: React.FC<Props> = ({ onDecision }) => {
             <TableRow>
               <TableCell>Demande</TableCell>
               <TableCell>Titulaire</TableCell>
-              <TableCell>Champ</TableCell>
-              <TableCell>Ancienne valeur</TableCell>
-              <TableCell>Nouvelle valeur</TableCell>
+              <TableCell>Corrections demandées</TableCell>
               <TableCell>Motif</TableCell>
               <TableCell>Demandeur</TableCell>
               <TableCell />
@@ -100,7 +98,7 @@ const DemandesAValider: React.FC<Props> = ({ onDecision }) => {
           </TableHead>
           <TableBody>
             {demandes.length === 0 && (
-              <TableRow><TableCell colSpan={8} align="center">Aucune demande en attente de validation.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} align="center">Aucune demande en attente de validation.</TableCell></TableRow>
             )}
             {demandes.map((d) => (
               <TableRow key={d.id}>
@@ -114,9 +112,7 @@ const DemandesAValider: React.FC<Props> = ({ onDecision }) => {
                   <br />
                   <Typography variant="caption" color="text.secondary">Permis {d.numero_permis ?? '—'}</Typography>
                 </TableCell>
-                <TableCell>{d.champ_libelle}</TableCell>
-                <TableCell>{afficherValeur(d, d.ancienne_valeur)}</TableCell>
-                <TableCell><strong>{afficherValeur(d, d.nouvelle_valeur, true)}</strong></TableCell>
+                <TableCell sx={{ minWidth: 260 }}><ListeCorrections lignes={d.lignes} /></TableCell>
                 <TableCell sx={{ maxWidth: 220 }}>{d.motif}</TableCell>
                 <TableCell>{d.demandeur_email ?? '—'}</TableCell>
                 <TableCell align="right">
@@ -154,13 +150,14 @@ const DemandesAValider: React.FC<Props> = ({ onDecision }) => {
         </DialogTitle>
         <DialogContent>
           {decision && (
-            <Typography variant="body2" sx={{ mb: 2 }}>
-              {decision.demande.champ_libelle} : « {afficherValeur(decision.demande, decision.demande.ancienne_valeur)} » →{' '}
-              <strong>« {afficherValeur(decision.demande, decision.demande.nouvelle_valeur, true)} »</strong>
-              {decision.type === 'approuver'
-                ? '. La donnée active sera mise à jour sur toutes les catégories du titulaire ; l’ancienne valeur reste dans l’historique.'
-                : '. Le dossier ne sera pas modifié.'}
-            </Typography>
+            <Box sx={{ mb: 2 }}>
+              <ListeCorrections lignes={decision.demande.lignes} />
+              <Typography variant="body2" sx={{ mt: 1 }}>
+                {decision.type === 'approuver'
+                  ? 'Toutes ces corrections seront appliquées sur toutes les catégories du titulaire ; les anciennes valeurs restent dans l’historique.'
+                  : 'Le dossier ne sera pas modifié.'}
+              </Typography>
+            </Box>
           )}
           <TextField fullWidth multiline minRows={3} size="small"
             label={decision?.type === 'rejeter' ? 'Motif du rejet (obligatoire)' : 'Commentaire (facultatif)'}

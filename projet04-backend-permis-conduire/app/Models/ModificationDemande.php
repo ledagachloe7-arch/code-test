@@ -6,7 +6,8 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * Demande de modification d'une information personnelle d'un titulaire.
+ * Demande de modification des informations personnelles d'un titulaire.
+ * Peut corriger plusieurs champs (lignes) avec un motif et un justificatif communs.
  * Sert aussi d'historique : jamais supprimée une fois soumise.
  */
 class ModificationDemande extends Model
@@ -29,21 +30,20 @@ class ModificationDemande extends Model
     /** Le chemin du fichier n'est jamais exposé : téléchargement via l'API uniquement. */
     protected $hidden = ['justificatif_path'];
 
-    protected $appends = ['champ_libelle', 'a_justificatif'];
+    protected $appends = ['a_justificatif'];
 
     protected function casts(): array
     {
         return [
-            'details' => 'array',
             'date_soumission' => 'datetime',
             'date_decision' => 'datetime',
             'date_application' => 'datetime',
         ];
     }
 
-    public function getChampLibelleAttribute(): string
+    public function lignes()
     {
-        return config('modifications.champs')[$this->champ] ?? $this->champ;
+        return $this->hasMany(ModificationDemandeLigne::class, 'demande_id')->orderBy('created_at');
     }
 
     public function getAJustificatifAttribute(): bool

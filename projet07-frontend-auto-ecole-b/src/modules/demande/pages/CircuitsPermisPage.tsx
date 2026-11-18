@@ -7,6 +7,7 @@ import { ROUTES } from '../../../shared/constants';
 import NouvelleDemandeePage from './NouvelleDemandeePage';
 import RenouvellementPage from '../../renouvellement/pages/RenouvellementPage';
 import MiseAJourPage from '../../mise-a-jour/pages/MiseAJourPage';
+import DuplicataPermisRosePage from '../../duplicata/pages/DuplicataPermisRosePage';
 
 /**
  * Permis de conduire : circuits Permis rose / Permis vert.
@@ -23,7 +24,7 @@ interface SousCircuit {
    */
   typesDemande?: string[];
   /** Sous-circuit avec son propre écran (hors parcours « Nouvelle demande »). */
-  ecran?: 'renouvellement' | 'mise-a-jour';
+  ecran?: 'renouvellement' | 'mise-a-jour' | 'duplicata-rose';
 }
 
 interface Circuit {
@@ -37,13 +38,24 @@ interface Circuit {
 /** Sous-circuits communs : Duplicata, Mise à jour, Renouvellement, puis un sous-circuit propre au circuit. */
 const sousCircuitsCommuns = (
   support: string,
-  duplicata?: string[],
-  renouvellement?: SousCircuit['ecran'],
-  miseAJour?: SousCircuit['ecran'],
+  options: {
+    /** Duplicata via le parcours « Nouvelle demande » (types de demande autorisés). */
+    duplicataTypes?: string[];
+    /** Duplicata via un écran dédié (prioritaire sur duplicataTypes). */
+    duplicataEcran?: SousCircuit['ecran'];
+    renouvellement?: SousCircuit['ecran'];
+    miseAJour?: SousCircuit['ecran'];
+  } = {},
 ): SousCircuit[] => [
-  { id: 'duplicata', libelle: 'Duplicata', description: `Duplicata ${support}.`, typesDemande: duplicata },
-  { id: 'mise-a-jour', libelle: 'Mise à jour', description: `Correction des informations ${support}.`, ecran: miseAJour },
-  { id: 'renouvellement', libelle: 'Renouvellement', description: `Renouvellement ${support}.`, ecran: renouvellement },
+  {
+    id: 'duplicata',
+    libelle: 'Duplicata',
+    description: `Duplicata ${support}.`,
+    typesDemande: options.duplicataEcran ? undefined : options.duplicataTypes,
+    ecran: options.duplicataEcran,
+  },
+  { id: 'mise-a-jour', libelle: 'Mise à jour', description: `Correction des informations ${support}.`, ecran: options.miseAJour },
+  { id: 'renouvellement', libelle: 'Renouvellement', description: `Renouvellement ${support}.`, ecran: options.renouvellement },
 ];
 
 const CIRCUITS: Circuit[] = [
@@ -53,7 +65,11 @@ const CIRCUITS: Circuit[] = [
     description: 'Permis de conduire national',
     couleur: '#c2185b',
     sousCircuits: [
-      ...sousCircuitsCommuns('du permis rose', ['DUPLICATA'], 'renouvellement', 'mise-a-jour'),
+      ...sousCircuitsCommuns('du permis rose', {
+        duplicataEcran: 'duplicata-rose',
+        renouvellement: 'renouvellement',
+        miseAJour: 'mise-a-jour',
+      }),
       {
         id: 'informatisation',
         libelle: 'Informatisation permis de conduire',
@@ -67,7 +83,7 @@ const CIRCUITS: Circuit[] = [
     description: "Fiche d'enregistrement",
     couleur: '#2e7d32',
     sousCircuits: [
-      ...sousCircuitsCommuns("de la fiche d'enregistrement", ['DUPLICATAFICHEENREGISTREMENT']),
+      ...sousCircuitsCommuns("de la fiche d'enregistrement", { duplicataTypes: ['DUPLICATAFICHEENREGISTREMENT'] }),
       {
         id: 'nouvelle-fiche',
         libelle: "Création d'une nouvelle fiche",
@@ -142,6 +158,16 @@ const CircuitsPermisPage: React.FC = () => {
   if (circuit && sousCircuit?.ecran === 'renouvellement') {
     return (
       <RenouvellementPage
+        titre={`${circuit.libelle} — ${sousCircuit.libelle}`}
+        couleur={circuit.couleur}
+        onRetour={() => setSousCircuit(null)}
+      />
+    );
+  }
+
+  if (circuit && sousCircuit?.ecran === 'duplicata-rose') {
+    return (
+      <DuplicataPermisRosePage
         titre={`${circuit.libelle} — ${sousCircuit.libelle}`}
         couleur={circuit.couleur}
         onRetour={() => setSousCircuit(null)}

@@ -68,9 +68,9 @@ const MiseAJourPage: React.FC<MiseAJourPageProps> = ({ titre = 'Mise à jour des
     setChargement(true);
     try {
       setFiche(await modificationService.fiche(t.hPermisId));
-    } catch (err: any) {
+    } catch (err) {
       setFiche(null);
-      toast.error(err.message);
+      toast.error(err instanceof Error ? err.message : 'Une erreur est survenue.');
     } finally {
       setChargement(false);
     }
@@ -85,8 +85,8 @@ const MiseAJourPage: React.FC<MiseAJourPageProps> = ({ titre = 'Mise à jour des
   const soumettre = async (d: ModificationDemande) => {
     try {
       toast.success((await modificationService.soumettre(d.id)).message);
-    } catch (err: any) {
-      toast.error(err.message);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Une erreur est survenue.');
     }
     await rafraichir();
   };
@@ -96,8 +96,8 @@ const MiseAJourPage: React.FC<MiseAJourPageProps> = ({ titre = 'Mise à jour des
     try {
       await modificationService.supprimerBrouillon(d.id);
       toast.success('Brouillon supprimé.');
-    } catch (err: any) {
-      toast.error(err.message);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Une erreur est survenue.');
     }
     await rafraichir();
   };

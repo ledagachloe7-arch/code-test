@@ -4,13 +4,17 @@ import {
   Box,
   Button,
   CircularProgress,
+  Divider,
   Grid,
+  IconButton,
   MenuItem,
   Paper,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
+import { PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 import { formatDate } from '../../renouvellement/components/RechercheTitulaire';
 import {
@@ -18,6 +22,7 @@ import {
   type ChampModifiable,
   type FicheTitulaire,
   type ModificationDemande,
+  type SaisieLigne,
 } from '../services/modification.service';
 
 const ageA = (dateNaissance?: string | null): number | null => {
@@ -30,7 +35,12 @@ const ageA = (dateNaissance?: string | null): number | null => {
   return age;
 };
 
-const VIDE = { nouvelle_valeur: '', ville: '', province: '', pays: '', motif: '' };
+type Ligne = Required<SaisieLigne> & { cle: number };
+
+let compteur = 0;
+const nouvelleLigne = (champ: ChampModifiable): Ligne => ({
+  cle: ++compteur, champ, nouvelle_valeur: '', ville: '', province: '', pays: '',
+});
 
 interface Props {
   fiche: FicheTitulaire;
@@ -41,29 +51,37 @@ interface Props {
 }
 
 /**
- * Demande de modification : champ, valeur actuelle (lecture seule), nouvelle valeur, motif, justificatif.
- * Aucune modification directe : la demande part en validation.
+ * Demande de modification : un ou plusieurs champs (valeur actuelle en lecture seule → nouvelle valeur),
+ * un motif et un justificatif communs. Aucune modification directe : la demande part en validation.
  */
 const FormulaireModification: React.FC<Props> = ({ fiche, brouillon, onTermine, onAnnulerBrouillon }) => {
-  const [champ, setChamp] = useState<ChampModifiable>('nom');
-  const [valeurs, setValeurs] = useState(VIDE);
+  const champsDisponibles = Object.keys(fiche.champs) as ChampModifiable[];
+  const [lignes, setLignes] = useState<Ligne[]>([nouvelleLigne('nom')]);
+  const [motif, setMotif] = useState('');
   const [justificatif, setJustificatif] = useState<File | null>(null);
   const [envoi, setEnvoi] = useState<'brouillon' | 'soumettre' | null>(null);
 
+  const reinitialiser = () => {
+    setLignes([nouvelleLigne('nom')]);
+    setMotif('');
+    setJustificatif(null);
+  };
+
   useEffect(() => {
     if (brouillon) {
-      setChamp(brouillon.champ);
-      setValeurs({
-        nouvelle_valeur: brouillon.champ === 'lieu_naissance' ? '' : brouillon.nouvelle_valeur,
-        ville: brouillon.details?.ville ?? '',
-        province: brouillon.details?.province ?? '',
-        pays: brouillon.details?.pays ?? '',
-        motif: brouillon.motif ?? '',
-      });
+      setLignes(brouillon.lignes.map((l) => ({
+        cle: ++compteur,
+        champ: l.champ,
+        nouvelle_valeur: l.champ === 'lieu_naissance' ? '' : l.nouvelle_valeur,
+        ville: l.details?.ville ?? '',
+        province: l.details?.province ?? '',
+        pays: l.details?.pays ?? '',
+      })));
+      setMotif(brouillon.motif ?? '');
+      setJustificatif(null);
     } else {
-      setValeurs(VIDE);
+      reinitialiser();
     }
-    setJustificatif(null);
   }, [brouillon]);
 
   const t = fiche.titulaire;
@@ -74,22 +92,42 @@ const FormulaireModification: React.FC<Props> = ({ fiche, brouillon, onTermine, 
     lieu_naissance: t.lieu_naissance ?? '',
     nationalite: t.nationalite ?? '',
   };
-  const nouvelAge = champ === 'date_naissance' ? ageA(valeurs.nouvelle_valeur) : null;
-  const set = (k: keyof typeof VIDE) => (e: React.ChangeEvent<HTMLInputElement>) => setValeurs({ ...valeurs, [k]: e.target.value });
+
+  const champsUtilises = new Set(lignes.map((l) => l.champ));
+  const champsRestants = champsDisponibles.filter((c) => !champsUtilises.has(c));
+  const contientDateNaissance = champsUtilises.has('date_naissance');
+
+  const majLigne = (cle: number, patch: Partial<Ligne>) =>
+    setLignes((ls) => ls.map((l) => (l.cle === cle ? { ...l, ...patch } : l)));
+
+  const changerChamp = (cle: number, champ: ChampModifiable) =>
+    majLigne(cle, { champ, nouvelle_valeur: '', ville: '', province: '', pays: '' });
+
+  const ajouterLigne = () => {
+    if (champsRestants.length > 0) setLignes((ls) => [...ls, nouvelleLigne(champsRestants[0])]);
+  };
+
+  const supprimerLigne = (cle: number) => setLignes((ls) => (ls.length > 1 ? ls.filter((l) => l.cle !== cle) : ls));
 
   const envoyer = async (soumettre: boolean) => {
     setEnvoi(soumettre ? 'soumettre' : 'brouillon');
     try {
-      const saisie = { champ, ...valeurs, justificatif, soumettre };
+      const saisie = {
+        lignes: lignes.map((l) => ({
+          champ: l.champ, nouvelle_valeur: l.nouvelle_valeur, ville: l.ville, province: l.province, pays: l.pays,
+        })),
+        motif,
+        justificatif,
+        soumettre,
+      };
       const res = brouillon
         ? await modificationService.modifierBrouillon(brouillon.id, saisie)
         : await modificationService.creer(fiche.h_permis_id, saisie);
       toast.success(res.message);
-      setValeurs(VIDE);
-      setJustificatif(null);
+      reinitialiser();
       onTermine();
-    } catch (err: any) {
-      toast.error(err.message);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Impossible d'enregistrer la demande.");
     } finally {
       setEnvoi(null);
     }
@@ -104,50 +142,78 @@ const FormulaireModification: React.FC<Props> = ({ fiche, brouillon, onTermine, 
         {brouillon && <Button size="small" onClick={onAnnulerBrouillon}>Nouvelle demande</Button>}
       </Stack>
 
+      {lignes.map((l, i) => {
+        const nouvelAge = l.champ === 'date_naissance' ? ageA(l.nouvelle_valeur) : null;
+        const set = (k: keyof SaisieLigne) => (e: React.ChangeEvent<HTMLInputElement>) => majLigne(l.cle, { [k]: e.target.value });
+        return (
+          <Box key={l.cle}>
+            {i > 0 && <Divider sx={{ my: 2 }} />}
+            <Grid container spacing={2} alignItems="flex-start">
+              <Grid item xs={12} md={4}>
+                <TextField select fullWidth size="small" label={`Champ à modifier ${lignes.length > 1 ? i + 1 : ''}`.trim()}
+                  value={l.champ} onChange={(e) => changerChamp(l.cle, e.target.value as ChampModifiable)}>
+                  {champsDisponibles
+                    .filter((c) => c === l.champ || !champsUtilises.has(c))
+                    .map((c) => <MenuItem key={c} value={c}>{fiche.champs[c]}</MenuItem>)}
+                </TextField>
+              </Grid>
+              <Grid item xs={lignes.length > 1 ? 10 : 12} md={lignes.length > 1 ? 7 : 8}>
+                <TextField fullWidth size="small" label="Valeur actuelle (lecture seule)" value={valeurActuelle[l.champ] || '—'}
+                  InputProps={{ readOnly: true }} disabled
+                  helperText={l.champ === 'date_naissance' && t.age != null ? `Âge actuel : ${t.age} ans` : ' '} />
+              </Grid>
+              {lignes.length > 1 && (
+                <Grid item xs={2} md={1} sx={{ textAlign: 'right' }}>
+                  <Tooltip title="Retirer ce champ">
+                    <IconButton color="error" onClick={() => supprimerLigne(l.cle)} aria-label="Retirer ce champ">
+                      <TrashIcon style={{ width: 18 }} />
+                    </IconButton>
+                  </Tooltip>
+                </Grid>
+              )}
+
+              {l.champ === 'lieu_naissance' ? (
+                <>
+                  <Grid item xs={12} md={4}>
+                    <TextField fullWidth size="small" required label="Ville / localité" value={l.ville} onChange={set('ville')} />
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <TextField fullWidth size="small" label="Province / département" value={l.province} onChange={set('province')} />
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <TextField fullWidth size="small" required label="Pays" value={l.pays} onChange={set('pays')} />
+                  </Grid>
+                </>
+              ) : (
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    fullWidth size="small" required
+                    type={l.champ === 'date_naissance' ? 'date' : 'text'}
+                    InputLabelProps={l.champ === 'date_naissance' ? { shrink: true } : undefined}
+                    label={l.champ === 'date_naissance' ? 'Nouvelle date demandée' : `Nouveau ${fiche.champs[l.champ].toLowerCase()}`}
+                    value={l.nouvelle_valeur}
+                    onChange={set('nouvelle_valeur')}
+                    helperText={l.champ === 'date_naissance' ? (nouvelAge != null ? `Nouvel âge calculé : ${nouvelAge} ans` : ' ') : ' '}
+                  />
+                </Grid>
+              )}
+            </Grid>
+          </Box>
+        );
+      })}
+
+      <Box sx={{ mt: 1 }}>
+        <Button size="small" startIcon={<PlusIcon style={{ width: 16 }} />} onClick={ajouterLigne} disabled={champsRestants.length === 0}>
+          Ajouter un autre champ à corriger
+        </Button>
+      </Box>
+
+      <Divider sx={{ my: 2 }} />
+
       <Grid container spacing={2}>
-        <Grid item xs={12} md={4}>
-          <TextField select fullWidth size="small" label="Champ à modifier" value={champ}
-            onChange={(e) => { setChamp(e.target.value as ChampModifiable); setValeurs({ ...VIDE, motif: valeurs.motif }); }}>
-            {(Object.keys(fiche.champs) as ChampModifiable[]).map((c) => (
-              <MenuItem key={c} value={c}>{fiche.champs[c]}</MenuItem>
-            ))}
-          </TextField>
-        </Grid>
-        <Grid item xs={12} md={8}>
-          <TextField fullWidth size="small" label="Valeur actuelle (lecture seule)" value={valeurActuelle[champ] || '—'}
-            InputProps={{ readOnly: true }} disabled
-            helperText={champ === 'date_naissance' && t.age != null ? `Âge actuel : ${t.age} ans` : ' '} />
-        </Grid>
-
-        {champ === 'lieu_naissance' ? (
-          <>
-            <Grid item xs={12} md={4}>
-              <TextField fullWidth size="small" required label="Ville / localité" value={valeurs.ville} onChange={set('ville')} />
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <TextField fullWidth size="small" label="Province / département" value={valeurs.province} onChange={set('province')} />
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <TextField fullWidth size="small" required label="Pays" value={valeurs.pays} onChange={set('pays')} />
-            </Grid>
-          </>
-        ) : (
-          <Grid item xs={12} md={6}>
-            <TextField
-              fullWidth size="small" required
-              type={champ === 'date_naissance' ? 'date' : 'text'}
-              InputLabelProps={champ === 'date_naissance' ? { shrink: true } : undefined}
-              label={champ === 'date_naissance' ? 'Nouvelle date demandée' : `Nouveau ${fiche.champs[champ].toLowerCase()}`}
-              value={valeurs.nouvelle_valeur}
-              onChange={set('nouvelle_valeur')}
-              helperText={champ === 'date_naissance' ? (nouvelAge != null ? `Nouvel âge calculé : ${nouvelAge} ans` : ' ') : ' '}
-            />
-          </Grid>
-        )}
-
         <Grid item xs={12}>
           <TextField fullWidth size="small" required multiline minRows={2} label="Motif de la demande"
-            value={valeurs.motif} onChange={set('motif')} />
+            helperText="Commun à tous les champs de la demande." value={motif} onChange={(e) => setMotif(e.target.value)} />
         </Grid>
         <Grid item xs={12}>
           <Button variant="outlined" component="label" size="small">
@@ -155,15 +221,15 @@ const FormulaireModification: React.FC<Props> = ({ fiche, brouillon, onTermine, 
             <input hidden type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setJustificatif(e.target.files?.[0] ?? null)} />
           </Button>
           <Typography variant="body2" component="span" sx={{ ml: 1.5 }} color="text.secondary">
-            {justificatif?.name ?? (brouillon?.a_justificatif ? `Déjà joint : ${brouillon.justificatif_nom}` : 'PDF, JPG ou PNG — 5 Mo max.')}
+            {justificatif?.name ?? (brouillon?.a_justificatif ? `Déjà joint : ${brouillon.justificatif_nom}` : 'PDF, JPG ou PNG — 5 Mo max. Un seul document couvrant toutes les corrections.')}
           </Typography>
         </Grid>
       </Grid>
 
-      {champ === 'date_naissance' && (
+      {contientDateNaissance && (
         <Alert severity="warning" sx={{ mt: 2 }}>
-          Modification sensible : validation renforcée requise. Après approbation, l'âge et les règles de validité C/D seront
-          recalculés à partir de la nouvelle date.
+          La demande modifie la date de naissance : validation renforcée requise pour toute la demande. Après approbation, l'âge et
+          les règles de validité C/D seront recalculés à partir de la nouvelle date.
         </Alert>
       )}
 
@@ -172,7 +238,7 @@ const FormulaireModification: React.FC<Props> = ({ fiche, brouillon, onTermine, 
           {envoi === 'brouillon' ? <CircularProgress size={18} /> : 'Enregistrer en brouillon'}
         </Button>
         <Button variant="contained" onClick={() => envoyer(true)} disabled={!!envoi}>
-          {envoi === 'soumettre' ? <CircularProgress size={18} color="inherit" /> : 'Soumettre pour validation'}
+          {envoi === 'soumettre' ? <CircularProgress size={18} color="inherit" /> : `Soumettre pour validation${lignes.length > 1 ? ` (${lignes.length} champs)` : ''}`}
         </Button>
       </Box>
     </Paper>

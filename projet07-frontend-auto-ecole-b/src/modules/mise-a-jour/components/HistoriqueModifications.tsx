@@ -2,7 +2,7 @@ import React from 'react';
 import { Box, Button, Chip, Stack, Table, TableBody, TableCell, TableHead, TableRow, Tooltip, Typography } from '@mui/material';
 import toast from 'react-hot-toast';
 import { formatDate, formatDateHeure } from '../../renouvellement/components/RechercheTitulaire';
-import { modificationService, type ModificationDemande, type StatutModification } from '../services/modification.service';
+import { modificationService, type LigneModification, type ModificationDemande, type StatutModification } from '../services/modification.service';
 
 export const STATUTS_MODIFICATION: Record<StatutModification, { label: string; color: 'default' | 'warning' | 'success' | 'error' }> = {
   BROUILLON: { label: 'Brouillon', color: 'default' },
@@ -12,20 +12,33 @@ export const STATUTS_MODIFICATION: Record<StatutModification, { label: string; c
 };
 
 /** Affiche une valeur de façon lisible (dates au format JJ/MM/AAAA, lieu détaillé). */
-export const afficherValeur = (d: Pick<ModificationDemande, 'champ' | 'details'>, valeur: string | null, nouvelle = false) => {
+export const afficherValeur = (l: Pick<LigneModification, 'champ' | 'details'>, valeur: string | null, nouvelle = false) => {
   if (valeur == null || valeur === '') return '—';
-  if (d.champ === 'date_naissance') return formatDate(valeur);
-  if (nouvelle && d.champ === 'lieu_naissance' && d.details) {
-    return [d.details.ville, d.details.province, d.details.pays].filter(Boolean).join(', ');
+  if (l.champ === 'date_naissance') return formatDate(valeur);
+  if (nouvelle && l.champ === 'lieu_naissance' && l.details) {
+    return [l.details.ville, l.details.province, l.details.pays].filter(Boolean).join(', ');
   }
   return valeur;
 };
 
+/** Liste des champs corrigés d'une demande : « Champ : ancienne → nouvelle ». */
+export const ListeCorrections: React.FC<{ lignes: LigneModification[] }> = ({ lignes }) => (
+  <Box component="ul" sx={{ m: 0, pl: 2 }}>
+    {lignes.map((l) => (
+      <li key={l.id}>
+        <Typography variant="body2" component="span">
+          {l.champ_libelle} : {afficherValeur(l, l.ancienne_valeur)} → <strong>{afficherValeur(l, l.nouvelle_valeur, true)}</strong>
+        </Typography>
+      </li>
+    ))}
+  </Box>
+);
+
 export const ouvrirJustificatif = async (id: string) => {
   try {
     await modificationService.ouvrirJustificatif(id);
-  } catch (err: any) {
-    toast.error(err.message);
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : 'Impossible d’ouvrir le justificatif.');
   }
 };
 
@@ -45,9 +58,7 @@ const HistoriqueModifications: React.FC<Props> = ({ demandes, agentId, onModifie
       <TableHead>
         <TableRow>
           <TableCell>Demande</TableCell>
-          <TableCell>Champ</TableCell>
-          <TableCell>Ancienne valeur</TableCell>
-          <TableCell>Nouvelle valeur</TableCell>
+          <TableCell>Corrections demandées</TableCell>
           <TableCell>Motif</TableCell>
           <TableCell>Statut</TableCell>
           <TableCell>Demandeur</TableCell>
@@ -57,7 +68,7 @@ const HistoriqueModifications: React.FC<Props> = ({ demandes, agentId, onModifie
       </TableHead>
       <TableBody>
         {demandes.length === 0 && (
-          <TableRow><TableCell colSpan={9} align="center">Aucune demande de modification.</TableCell></TableRow>
+          <TableRow><TableCell colSpan={7} align="center">Aucune demande de modification.</TableCell></TableRow>
         )}
         {demandes.map((d) => {
           const brouillonAgent = d.statut === 'BROUILLON' && (!agentId || d.demandeur_id === agentId);
@@ -70,9 +81,7 @@ const HistoriqueModifications: React.FC<Props> = ({ demandes, agentId, onModifie
                   {d.date_soumission ? `Soumise le ${formatDateHeure(d.date_soumission)}` : `Créée le ${formatDateHeure(d.created_at)}`}
                 </Typography>
               </TableCell>
-              <TableCell>{d.champ_libelle}</TableCell>
-              <TableCell>{afficherValeur(d, d.ancienne_valeur)}</TableCell>
-              <TableCell><strong>{afficherValeur(d, d.nouvelle_valeur, true)}</strong></TableCell>
+              <TableCell sx={{ minWidth: 260 }}><ListeCorrections lignes={d.lignes} /></TableCell>
               <TableCell sx={{ maxWidth: 220 }}>{d.motif || '—'}</TableCell>
               <TableCell>
                 <Chip size="small" label={STATUTS_MODIFICATION[d.statut].label} color={STATUTS_MODIFICATION[d.statut].color} />

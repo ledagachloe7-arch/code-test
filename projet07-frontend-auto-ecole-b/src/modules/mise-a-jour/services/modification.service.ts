@@ -3,6 +3,15 @@ import axiosClient from '../../../shared/utils/axiosConfig';
 export type ChampModifiable = 'nom' | 'prenom' | 'date_naissance' | 'lieu_naissance' | 'nationalite';
 export type StatutModification = 'BROUILLON' | 'SOUMISE' | 'APPROUVEE' | 'REJETEE';
 
+export interface LigneModification {
+  id: string;
+  champ: ChampModifiable;
+  champ_libelle: string;
+  ancienne_valeur: string | null;
+  nouvelle_valeur: string;
+  details: { ville?: string; province?: string | null; pays?: string } | null;
+}
+
 export interface ModificationDemande {
   id: string;
   numero: string;
@@ -10,11 +19,8 @@ export interface ModificationDemande {
   numero_permis: string | null;
   nom_titulaire: string;
   prenom_titulaire: string | null;
-  champ: ChampModifiable;
-  champ_libelle: string;
-  ancienne_valeur: string | null;
-  nouvelle_valeur: string;
-  details: { ville?: string; province?: string | null; pays?: string } | null;
+  /** Champs corrigés par la demande (un ou plusieurs). */
+  lignes: LigneModification[];
   motif: string;
   a_justificatif: boolean;
   justificatif_nom: string | null;
@@ -48,36 +54,43 @@ export interface FicheTitulaire {
   peut_valider: boolean;
 }
 
-export interface SaisieModification {
+export interface SaisieLigne {
   champ: ChampModifiable;
   nouvelle_valeur?: string;
   ville?: string;
   province?: string;
   pays?: string;
+}
+
+export interface SaisieModification {
+  lignes: SaisieLigne[];
   motif: string;
   justificatif?: File | null;
   soumettre: boolean;
 }
 
-function messageErreur(error: any, defaut: string): string {
-  const data = error?.response?.data;
+function messageErreur(error: unknown, defaut: string): string {
+  const e = error as { response?: { data?: { errors?: Record<string, string[]>; message?: string } }; message?: string } | undefined;
+  const data = e?.response?.data;
   if (data?.errors) {
     const premiere = Object.values(data.errors as Record<string, string[]>)[0]?.[0];
     if (premiere) return premiere;
   }
-  return data?.message || error?.message || defaut;
+  return data?.message || e?.message || defaut;
 }
 
 function versFormData(s: SaisieModification): FormData {
   const fd = new FormData();
-  fd.append('champ', s.champ);
-  if (s.champ === 'lieu_naissance') {
-    fd.append('ville', s.ville ?? '');
-    fd.append('province', s.province ?? '');
-    fd.append('pays', s.pays ?? '');
-  } else {
-    fd.append('nouvelle_valeur', s.nouvelle_valeur ?? '');
-  }
+  s.lignes.forEach((l, i) => {
+    fd.append(`lignes[${i}][champ]`, l.champ);
+    if (l.champ === 'lieu_naissance') {
+      fd.append(`lignes[${i}][ville]`, l.ville ?? '');
+      fd.append(`lignes[${i}][province]`, l.province ?? '');
+      fd.append(`lignes[${i}][pays]`, l.pays ?? '');
+    } else {
+      fd.append(`lignes[${i}][nouvelle_valeur]`, l.nouvelle_valeur ?? '');
+    }
+  });
   fd.append('motif', s.motif ?? '');
   if (s.justificatif) fd.append('justificatif', s.justificatif);
   fd.append('soumettre', s.soumettre ? '1' : '0');
@@ -167,9 +180,9 @@ export const modificationService = {
       const url = URL.createObjectURL(res.data as Blob);
       window.open(url, '_blank', 'noopener');
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    } catch (error: any) {
+    } catch (error) {
       let message = 'Impossible d’ouvrir le justificatif.';
-      const blob = error?.response?.data;
+      const blob = (error as { response?: { data?: unknown } })?.response?.data;
       if (blob instanceof Blob) {
         try {
           message = JSON.parse(await blob.text()).message || message;
