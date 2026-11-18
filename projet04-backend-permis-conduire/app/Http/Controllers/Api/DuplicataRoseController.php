@@ -46,11 +46,14 @@ class DuplicataRoseController extends Controller
         ], $controle['statut'] === DuplicataRoseService::SHORTCODE_NON_VERIFIE ? 503 : 200);
     }
 
-    #[Endpoint(title: 'Créer une demande de duplicata (permis rose)', description: 'multipart/form-data : h_permis_id, motif (PERTE|VOL|DETERIORATION|AUTRE), motif_precision (obligatoire si AUTRE), observations, justificatif (pdf/jpg/png). Contrôles serveur : permis rose existant, shortcode actif recalculé, anti-doublon. Crée un dossier DUPLICATA (statut initial en_attente) lié au permis source.')]
+    #[Endpoint(title: 'Créer une demande de duplicata (permis rose)', description: 'multipart/form-data : h_permis_ids[] (une ou plusieurs catégories du même titulaire ; le premier = permis principal), motif (PERTE|VOL|DETERIORATION|AUTRE), motif_precision (obligatoire si AUTRE), observations, justificatif (pdf/jpg/png). Contrôles serveur : permis rose existant, shortcode actif recalculé, anti-doublon. Crée un dossier DUPLICATA (statut initial en_attente) lié au permis source.')]
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'h_permis_id' => 'required|uuid',
+            // Une ou plusieurs catégories d'un même titulaire ; h_permis_id (ancien format) reste accepté.
+            'h_permis_ids' => 'required_without:h_permis_id|array|min:1|max:20',
+            'h_permis_ids.*' => 'uuid|distinct',
+            'h_permis_id' => 'required_without:h_permis_ids|uuid',
             'motif' => 'required|string|in:' . implode(',', array_keys(config('duplicata.motifs'))),
             'motif_precision' => 'nullable|string|max:255',
             'observations' => 'nullable|string|max:' . config('duplicata.observations_max'),
@@ -59,7 +62,8 @@ class DuplicataRoseController extends Controller
         ]);
 
         try {
-            $d = $this->service->creer($data['h_permis_id'], $data, $request->file('justificatif'), $request->attributes->get('authenticated_user'));
+            $ids = $data['h_permis_ids'] ?? [$data['h_permis_id']];
+            $d = $this->service->creer($ids, $data, $request->file('justificatif'), $request->attributes->get('authenticated_user'));
         } catch (DuplicataException $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], $e->status());
         }
@@ -73,6 +77,8 @@ class DuplicataRoseController extends Controller
                 'numero_dossier' => $d->dossier->numero,
                 'statut_dossier' => $d->dossier->statut,
                 'numero_permis_source' => $d->numero_permis_source,
+                'categories' => \Illuminate\Support\Facades\DB::table('duplicata_demande_permis')
+                    ->where('duplicata_demande_id', $d->id)->orderBy('categorie')->pluck('categorie'),
             ],
         ], 201);
     }

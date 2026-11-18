@@ -12,7 +12,7 @@ import {
   IconButton,
   MenuItem,
   Paper,
-  Radio,
+  Checkbox,
   Stack,
   Table,
   TableBody,
@@ -27,6 +27,9 @@ import {
 } from '@mui/material';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { formatDate } from '../../renouvellement/components/RechercheTitulaire';
+import { buildNumeroPermis } from '../../cnepc/forms/utils';
+import type { NumeroPermisParts, PermisFormatType } from '../../cnepc/forms/types';
+import SaisieNumeroPermis, { PARTS_VIDES } from '../components/SaisieNumeroPermis';
 import {
   duplicataService,
   estPermisRose,
@@ -69,6 +72,14 @@ const Champ: React.FC<{ label: string; valeur?: React.ReactNode }> = ({ label, v
     </Grid>
   );
 
+/** Compare deux numéros de permis sans tenir compte des tirets, espaces ni de la casse. */
+const normaliserNumero = (n?: string | null) => String(n ?? '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+const estNumeroExact = (p: PermisSource, saisie?: string) =>
+  !!saisie && normaliserNumero(p.numero_permis) !== '' && normaliserNumero(p.numero_permis) === normaliserNumero(saisie);
+
+/** Identifie un titulaire : numéro de pièce d'identité, sinon nom + prénom + date de naissance. */
+const cleTitulaire = (p: PermisSource) => p.numero_identite || `${p.nom}|${p.prenom ?? ''}|${p.date_naissance ?? ''}`;
+
 const TAILLE_MAX_JUSTIFICATIF = 5 * 1024 * 1024;
 
 /**
@@ -81,12 +92,19 @@ const DuplicataPermisRosePage: React.FC<Props> = ({ titre = 'Duplicata du permis
   // B — Recherche
   const [mode, setMode] = useState<ModeRecherche>('numero');
   const [criteres, setCriteres] = useState<CriteresRecherchePermis>({ numero_permis: '', nom: '', prenom: '', date_naissance: '' });
+  // Numéro de permis saisi de façon structurée (format standard AAAA-P-C-NNNN ou PERM).
+  const [formatNumero, setFormatNumero] = useState<PermisFormatType>('standard');
+  const [partsNumero, setPartsNumero] = useState<NumeroPermisParts>(PARTS_VIDES);
+  const numeroComplet = buildNumeroPermis(partsNumero, formatNumero);
   const [recherche, setRecherche] = useState(false);
   const [erreurRecherche, setErreurRecherche] = useState<string | null>(null);
 
   // C — Résultats / D — Fiche source
   const [resultats, setResultats] = useState<PermisSource[] | null>(null);
+  /** Permis principal (celui recherché) : porte l'identité du titulaire. */
   const [selection, setSelection] = useState<PermisSource | null>(null);
+  /** Catégories retenues pour le duplicata (toutes du même titulaire que `selection`). */
+  const [selectionIds, setSelectionIds] = useState<string[]>([]);
   const [confirme, setConfirme] = useState(false);
 
   // E — Shortcode
@@ -110,18 +128,49 @@ const DuplicataPermisRosePage: React.FC<Props> = ({ titre = 'Duplicata du permis
     setControle(null);
   };
 
+  /** Sélectionne un titulaire : toutes ses catégories roses présentes dans `liste` sont cochées. */
+  const selectionnerTitulaire = (principal: PermisSource, liste: PermisSource[]) => {
+    const cle = cleTitulaire(principal);
+    const ids = liste.filter((p) => estPermisRose(p) && cleTitulaire(p) === cle).map((p) => p.id);
+    setSelection(principal);
+    setSelectionIds([principal.id, ...ids.filter((id) => id !== principal.id)]);
+  };
+
+  const viderSelection = () => {
+    setSelection(null);
+    setSelectionIds([]);
+  };
+
   const lancerRecherche = async (e?: React.FormEvent) => {
     e?.preventDefault();
     setRecherche(true);
     setErreurRecherche(null);
-    setSelection(null);
+    viderSelection();
     reinitialiserApresPermis();
     try {
-      const r = await duplicataService.rechercherPermis(mode, criteres);
-      setResultats(r);
-      // Une seule correspondance (rose) : affichée directement, confirmation demandée.
-      const roses = r.filter(estPermisRose);
-      if (r.length === 1 && roses.length === 1) setSelection(roses[0]);
+      // Le registre stocke les numéros sans tirets (ex. 20072B88007) : la recherche se fait sur le numéro normalisé.
+      let r = await duplicataService.rechercherPermis(mode, { ...criteres, numero_permis: normaliserNumero(numeroComplet) });
+      // Recherche par numéro : le permis au numéro EXACT désigne le titulaire.
+      const exact = mode === 'numero' ? r.find((p) => estPermisRose(p) && estNumeroExact(p, numeroComplet)) : undefined;
+      if (exact) {
+        // On ramène toutes ses catégories, ainsi que les homonymes (même nom et prénom) pour qu'ils soient visibles.
+        const parNom = await duplicataService.rechercherPermis('identite', { nom: exact.nom, prenom: exact.prenom ?? '' });
+        const tous = [...r, ...parNom.filter((p) => !r.some((x) => x.id === p.id))];
+        const cle = cleTitulaire(exact);
+        const sesCategories = tous
+          .filter((p) => p.id !== exact.id && cleTitulaire(p) === cle)
+          .sort((a, b) => (a.categorie ?? '').localeCompare(b.categorie ?? ''));
+        const autres = tous.filter((p) => p.id !== exact.id && cleTitulaire(p) !== cle);
+        r = [exact, ...sesCategories, ...autres];
+        setResultats(r);
+        selectionnerTitulaire(exact, r);
+      } else {
+        setResultats(r);
+        const roses = r.filter(estPermisRose);
+        const titulaires = new Set(roses.map(cleTitulaire));
+        // Un seul titulaire trouvé : toutes ses catégories sont sélectionnées, confirmation demandée.
+        if (roses.length > 0 && titulaires.size === 1) selectionnerTitulaire(roses[0], r);
+      }
     } catch (err) {
       // Erreur technique : les critères saisis sont conservés.
       setResultats(null);
@@ -133,17 +182,37 @@ const DuplicataPermisRosePage: React.FC<Props> = ({ titre = 'Duplicata du permis
 
   const effacer = () => {
     setCriteres({ numero_permis: '', nom: '', prenom: '', date_naissance: '' });
+    setPartsNumero(PARTS_VIDES);
     setResultats(null);
     setErreurRecherche(null);
-    setSelection(null);
+    viderSelection();
     reinitialiserApresPermis();
   };
 
+  /**
+   * Clic sur une ligne : autre titulaire, on bascule sur lui (toutes ses catégories) ;
+   * même titulaire, on coche / décoche la catégorie (au moins une reste sélectionnée).
+   */
   const choisir = (p: PermisSource) => {
-    if (!estPermisRose(p)) return;
-    setSelection(p);
+    if (!estPermisRose(p) || !resultats) return;
     reinitialiserApresPermis();
+    if (!selection || cleTitulaire(p) !== cleTitulaire(selection)) {
+      selectionnerTitulaire(p, resultats);
+      return;
+    }
+    if (selectionIds.includes(p.id)) {
+      if (selectionIds.length === 1) return;
+      const restants = selectionIds.filter((id) => id !== p.id);
+      setSelectionIds(restants);
+      if (selection.id === p.id) setSelection(resultats.find((x) => x.id === restants[0]) ?? null);
+    } else {
+      setSelectionIds([...selectionIds, p.id]);
+    }
   };
+
+  const permisSelectionnes = (resultats ?? [])
+    .filter((p) => selectionIds.includes(p.id))
+    .sort((a, b) => (a.categorie ?? '').localeCompare(b.categorie ?? ''));
 
   const confirmerPermis = async () => {
     if (!selection) return;
@@ -181,7 +250,10 @@ const DuplicataPermisRosePage: React.FC<Props> = ({ titre = 'Duplicata du permis
     if (envoi || blocages.length > 0 || !selection || !motif) return;
     setEnvoi(true);
     try {
-      const res = await duplicataService.soumettre({ permisId: selection.id, motif, precision, observations, justificatif });
+      const res = await duplicataService.soumettre({
+        permisIds: [selection.id, ...selectionIds.filter((id) => id !== selection.id)],
+        motif, precision, observations, justificatif,
+      });
       setCree(res);
       toast.success(res.message);
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -222,8 +294,9 @@ const DuplicataPermisRosePage: React.FC<Props> = ({ titre = 'Duplicata du permis
       {cree && (
         <Alert severity="success" sx={{ mb: 2 }} action={<Button color="inherit" size="small" onClick={nouvelleDemande}>Nouvelle demande</Button>}>
           <AlertTitle>Demande de duplicata créée</AlertTitle>
-          Dossier <strong>{cree.numero_dossier}</strong> — statut « {cree.statut_dossier} » — lié au permis source n°{' '}
-          {cree.numero_permis_source}. Le permis source n'a pas été modifié.
+          Dossier <strong>{cree.numero_dossier}</strong> — statut « {cree.statut_dossier} » — catégorie(s){' '}
+          <strong>{cree.categories.join(', ')}</strong>, permis principal n° {cree.numero_permis_source}. Les permis sources
+          n'ont pas été modifiés.
         </Alert>
       )}
 
@@ -244,9 +317,15 @@ const DuplicataPermisRosePage: React.FC<Props> = ({ titre = 'Duplicata du permis
           </ToggleButtonGroup>
           <Grid container spacing={2}>
             {mode === 'numero' ? (
-              <Grid item xs={12} md={6}>
-                <TextField fullWidth size="small" label="Numéro du permis" value={criteres.numero_permis}
-                  onChange={(e) => setCriteres({ ...criteres, numero_permis: e.target.value })} />
+              <Grid item xs={12}>
+                <SaisieNumeroPermis
+                  format={formatNumero}
+                  parts={partsNumero}
+                  onFormatChange={(f) => { setFormatNumero(f); setPartsNumero(PARTS_VIDES); }}
+                  onPartsChange={setPartsNumero}
+                  numeroComplet={numeroComplet}
+                  disabled={recherche}
+                />
               </Grid>
             ) : (
               <>
@@ -267,7 +346,7 @@ const DuplicataPermisRosePage: React.FC<Props> = ({ titre = 'Duplicata du permis
           </Grid>
           <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mt: 2 }}>
             <Button onClick={effacer} disabled={recherche}>Effacer</Button>
-            <Button type="submit" variant="contained" disabled={recherche}>
+            <Button type="submit" variant="contained" disabled={recherche || (mode === 'numero' && !numeroComplet)}>
               {recherche ? <CircularProgress size={20} color="inherit" /> : 'Rechercher'}
             </Button>
           </Stack>
@@ -290,7 +369,8 @@ const DuplicataPermisRosePage: React.FC<Props> = ({ titre = 'Duplicata du permis
             <>
               {resultats.length > 1 && (
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  {resultats.length} correspondances : sélectionnez un seul permis rose.
+                  {resultats.length} résultats. Toutes les catégories du titulaire choisi sont cochées ; cliquer sur une autre
+                  personne la sélectionne à la place (un duplicata ne concerne qu'un seul titulaire).
                 </Typography>
               )}
               <Box sx={{ overflowX: 'auto' }}>
@@ -311,10 +391,15 @@ const DuplicataPermisRosePage: React.FC<Props> = ({ titre = 'Duplicata du permis
                       const rose = estPermisRose(p);
                       return (
                         <Tooltip key={p.id} title={rose ? '' : "Fiche d'enregistrement (permis vert) : non éligible au duplicata rose."}>
-                          <TableRow hover={rose} selected={selection?.id === p.id} onClick={() => choisir(p)}
+                          <TableRow hover={rose} selected={selectionIds.includes(p.id)} onClick={() => choisir(p)}
                             sx={{ cursor: rose ? 'pointer' : 'not-allowed', '& td': rose ? {} : { color: 'text.disabled' } }}>
-                            <TableCell padding="checkbox"><Radio size="small" checked={selection?.id === p.id} disabled={!rose} /></TableCell>
-                            <TableCell>{p.numero_permis ?? '—'}</TableCell>
+                            <TableCell padding="checkbox"><Checkbox size="small" checked={selectionIds.includes(p.id)} disabled={!rose} /></TableCell>
+                            <TableCell>
+                              {p.numero_permis ?? '—'}
+                              {mode === 'numero' && estNumeroExact(p, numeroComplet) && (
+                                <Chip size="small" color="success" label="Numéro exact" sx={{ ml: 1 }} />
+                              )}
+                            </TableCell>
                             <TableCell>{`${p.nom} ${p.prenom ?? ''}`.trim()}</TableCell>
                             <TableCell>{formatDate(p.date_naissance)}</TableCell>
                             <TableCell>{p.categorie ?? '—'}</TableCell>
@@ -334,30 +419,51 @@ const DuplicataPermisRosePage: React.FC<Props> = ({ titre = 'Duplicata du permis
 
       {/* D — Fiche source (lecture seule) */}
       {selection && (
-        <Bloc lettre="D" titre="Permis source (lecture seule)">
+        <Bloc lettre="D" titre="Titulaire et catégories du duplicata (lecture seule)">
           <Grid container spacing={2}>
-            <Champ label="Numéro du permis source" valeur={selection.numero_permis} />
             <Champ label="Nom et prénom(s)" valeur={`${selection.nom} ${selection.prenom ?? ''}`.trim()} />
             <Champ label="Date de naissance" valeur={selection.date_naissance ? formatDate(selection.date_naissance) : null} />
             <Champ label="Lieu de naissance" valeur={selection.lieu_naissance} />
-            <Champ label="Catégorie" valeur={selection.categorie} />
-            <Champ label="Date de délivrance" valeur={selection.date_obtention ? formatDate(selection.date_obtention) : null} />
-            <Champ label="Date de validité" valeur={selection.date_validite ? formatDate(selection.date_validite) : null} />
-            <Champ label="Lieu de délivrance" valeur={selection.lieu_obtention} />
             <Champ label="Identifiant de la personne" valeur={selection.numero_identite} />
-            <Champ label="Identifiant interne du permis" valeur={selection.id} />
+            <Champ label="Permis principal (recherché)" valeur={selection.numero_permis} />
           </Grid>
+          <Box sx={{ overflowX: 'auto', mt: 2 }}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Catégorie</TableCell>
+                  <TableCell>N° permis</TableCell>
+                  <TableCell>Délivrance</TableCell>
+                  <TableCell>Validité</TableCell>
+                  <TableCell>Lieu de délivrance</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {permisSelectionnes.map((p) => (
+                  <TableRow key={p.id}>
+                    <TableCell><strong>{p.categorie ?? '—'}</strong></TableCell>
+                    <TableCell>{p.numero_permis ?? '—'}</TableCell>
+                    <TableCell>{formatDate(p.date_obtention)}</TableCell>
+                    <TableCell>{formatDate(p.date_validite)}</TableCell>
+                    <TableCell>{p.lieu_obtention ?? '—'}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Box>
           <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 2 }}>
             Ces données ne sont pas modifiables ici. Une correction relève de la « Mise à jour » des informations.
           </Typography>
           <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mt: 1 }}>
             {confirme ? (
               <>
-                <Chip color="success" label="Permis confirmé" />
-                <Button size="small" onClick={() => { setSelection(null); reinitialiserApresPermis(); }}>Changer de permis</Button>
+                <Chip color="success" label={`Confirmé (${permisSelectionnes.length} catégorie${permisSelectionnes.length > 1 ? 's' : ''})`} />
+                <Button size="small" onClick={() => { viderSelection(); reinitialiserApresPermis(); }}>Changer de permis</Button>
               </>
             ) : (
-              <Button variant="contained" onClick={confirmerPermis}>Confirmer ce permis</Button>
+              <Button variant="contained" onClick={confirmerPermis}>
+                Confirmer {permisSelectionnes.length > 1 ? `ces ${permisSelectionnes.length} catégories` : 'ce permis'}
+              </Button>
             )}
           </Stack>
         </Bloc>
@@ -423,15 +529,18 @@ const DuplicataPermisRosePage: React.FC<Props> = ({ titre = 'Duplicata du permis
       <Bloc lettre="G" titre="Récapitulatif et soumission" actif={confirme}>
         <Grid container spacing={2}>
           <Champ label="Titulaire" valeur={selection ? `${selection.nom} ${selection.prenom ?? ''}`.trim() : '—'} />
-          <Champ label="Permis source" valeur={selection?.numero_permis ?? '—'} />
-          <Champ label="Catégorie" valeur={selection?.categorie ?? '—'} />
+          <Champ label="Permis principal" valeur={selection?.numero_permis ?? '—'} />
+          <Champ
+            label={`Catégorie${permisSelectionnes.length > 1 ? 's' : ''}`}
+            valeur={permisSelectionnes.length ? permisSelectionnes.map((p) => `${p.categorie} (${p.numero_permis})`).join(', ') : '—'}
+          />
           <Champ label="Motif" valeur={libelleMotif ? `${libelleMotif}${motif === 'AUTRE' && precision ? ` — ${precision}` : ''}` : '—'} />
           <Champ label="Observations" valeur={observations || '—'} />
           <Champ label="Justificatif" valeur={justificatif?.name ?? 'Aucun'} />
         </Grid>
         <Alert severity="info" sx={{ mt: 2 }}>
-          Demande de duplicata liée au permis existant{selection?.numero_permis ? ` n° ${selection.numero_permis}` : ''}. Le permis
-          source ne sera ni modifié, ni remplacé, ni supprimé.
+          Demande de duplicata liée aux permis existants du titulaire. Les permis sources ne seront ni modifiés, ni remplacés,
+          ni supprimés.
         </Alert>
         <Divider sx={{ my: 2 }} />
         {blocages.length > 0 && (

@@ -157,10 +157,15 @@ class DuplicataRoseService
     // ------------------------------------------------------------------
 
     /**
+     * @param string[] $hPermisIds Permis sources (une ou plusieurs catégories d'un même titulaire) ; le premier est le permis principal.
      * @param object|null $agent Utilisateur authentifié (id, email, centre_id)
      */
-    public function creer(string $hPermisId, array $data, ?UploadedFile $justificatif, $agent): DuplicataDemande
+    public function creer(array $hPermisIds, array $data, ?UploadedFile $justificatif, $agent): DuplicataDemande
     {
+        $hPermisIds = array_values(array_unique(array_filter(array_map('strval', $hPermisIds))));
+        if (count($hPermisIds) === 0) {
+            throw new DuplicataException('Sélectionnez au moins un permis source.', 422);
+        }
         $motif = strtoupper((string) ($data['motif'] ?? ''));
         if (! array_key_exists($motif, config('duplicata.motifs'))) {
             throw new DuplicataException('Le motif est obligatoire.', 422);
@@ -180,24 +185,38 @@ class DuplicataRoseService
 
         $cheminFichier = null;
         try {
-            $demande = DB::transaction(function () use ($hPermisId, $motif, $precision, $data, $justificatif, $agent, $typeDemandeId, &$cheminFichier) {
-                // Verrou sur le permis source : protège contre les doubles clics / soumissions simultanées.
-                $permis = HPermis::whereKey($hPermisId)->lockForUpdate()->first();
-                if (! $permis) {
+            $demande = DB::transaction(function () use ($hPermisIds, $motif, $precision, $data, $justificatif, $agent, $typeDemandeId, &$cheminFichier) {
+                // Verrou sur les permis sources : protège contre les doubles clics / soumissions simultanées.
+                $tous = HPermis::whereIn('id', $hPermisIds)->lockForUpdate()->get()->keyBy('id');
+                if ($tous->count() !== count($hPermisIds)) {
                     throw new DuplicataException('Permis source introuvable.', 404);
                 }
-                if (! self::estPermisRose($permis)) {
-                    throw new DuplicataException("Ce permis est une fiche d'enregistrement (permis vert) : non éligible au duplicata rose.", 422);
+                $permisSources = collect($hPermisIds)->map(fn ($id) => $tous[$id]);
+                $permis = $permisSources->first(); // permis principal
+
+                foreach ($permisSources as $p) {
+                    if (! self::estPermisRose($p)) {
+                        throw new DuplicataException("Le permis {$p->numero_permis} est une fiche d'enregistrement (permis vert) : non éligible au duplicata rose.", 422);
+                    }
+                    // Toutes les catégories doivent appartenir au même titulaire (jamais un homonyme).
+                    $memeTitulaire = ! empty($permis->numero_identite)
+                        ? $p->numero_identite === $permis->numero_identite
+                        : $p->id === $permis->id;
+                    if (! $memeTitulaire) {
+                        throw new DuplicataException("Le permis {$p->numero_permis} n'appartient pas au même titulaire : un duplicata ne concerne qu'une seule personne.", 422);
+                    }
                 }
 
-                // Anti-doublon : une seule demande en cours par permis source.
-                $enCours = DuplicataDemande::query()
-                    ->join('dossiers', 'dossiers.id', '=', 'duplicata_demandes.dossier_id')
-                    ->where('duplicata_demandes.permis_source_id', $permis->id)
+                // Anti-doublon : une catégorie ne peut figurer que dans une seule demande en cours.
+                $enCours = DB::table('duplicata_demande_permis as l')
+                    ->join('duplicata_demandes as d', 'd.id', '=', 'l.duplicata_demande_id')
+                    ->join('dossiers', 'dossiers.id', '=', 'd.dossier_id')
+                    ->whereIn('l.h_permis_id', $hPermisIds)
                     ->whereNotIn('dossiers.statut', config('duplicata.statuts_dossier_clos'))
-                    ->value('dossiers.numero');
+                    ->select('l.numero_permis', 'l.categorie', 'dossiers.numero')
+                    ->first();
                 if ($enCours !== null) {
-                    throw new DuplicataException("Une demande de duplicata est déjà en cours pour ce permis (dossier {$enCours}).", 409);
+                    throw new DuplicataException("Une demande de duplicata est déjà en cours pour la catégorie {$enCours->categorie} (permis {$enCours->numero_permis}, dossier {$enCours->numero}).", 409);
                 }
 
                 // Contrôle shortcode recalculé côté serveur (jamais celui envoyé par le navigateur).
@@ -219,12 +238,12 @@ class DuplicataRoseService
                     'lieu_de_dobtention_du_permis' => $permis->lieu_obtention,
                     'date_de_dobtention_du_permis' => $permis->date_obtention,
                     'date_expiration' => $permis->date_validite,
-                    'data_categorie' => [[
-                        'classe' => $permis->categorie,
-                        'ville' => $permis->lieu_obtention,
-                        'valable_du' => $permis->date_obtention,
-                        'jusqu_au' => $permis->date_validite,
-                    ]],
+                    'data_categorie' => $permisSources->map(fn (HPermis $p) => [
+                        'classe' => $p->categorie,
+                        'ville' => $p->lieu_obtention,
+                        'valable_du' => $p->date_obtention,
+                        'jusqu_au' => $p->date_validite,
+                    ])->values()->all(),
                     'expired' => false,
                     'suspended' => false,
                 ]);
@@ -263,6 +282,18 @@ class DuplicataRoseService
                 }
                 $d->save();
 
+                foreach ($permisSources as $p) {
+                    DB::table('duplicata_demande_permis')->insert([
+                        'id' => (string) \Illuminate\Support\Str::uuid(),
+                        'duplicata_demande_id' => $d->id,
+                        'h_permis_id' => $p->id,
+                        'numero_permis' => $p->numero_permis,
+                        'categorie' => $p->categorie,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                }
+
                 return $d;
             });
         } catch (\Throwable $e) {
@@ -276,6 +307,7 @@ class DuplicataRoseService
             'duplicata_id' => $demande->id,
             'dossier_id' => $demande->dossier_id,
             'permis_source_id' => $demande->permis_source_id,
+            'categories' => DB::table('duplicata_demande_permis')->where('duplicata_demande_id', $demande->id)->pluck('categorie')->all(),
             'motif' => $demande->motif_duplicata,
             'agent_id' => $agent->id ?? null,
         ]);

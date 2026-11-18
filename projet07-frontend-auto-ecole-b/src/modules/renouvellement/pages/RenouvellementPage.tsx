@@ -75,9 +75,9 @@ const RenouvellementPage: React.FC<RenouvellementPageProps> = ({ titre = 'Renouv
       const { etat: e, historique: h } = await renouvellementService.etat(titulaire.hPermisId);
       setEtat(e);
       setHistorique(h);
-    } catch (err: any) {
+    } catch (err) {
       setEtat(null);
-      toast.error(err.message);
+      toast.error(err instanceof Error ? err.message : 'Une erreur est survenue.');
     } finally {
       setChargementEtat(false);
     }
@@ -90,8 +90,8 @@ const RenouvellementPage: React.FC<RenouvellementPageProps> = ({ titre = 'Renouv
       const res = await renouvellementService.initier(selection.hPermisId, operateur, telephone || undefined);
       toast.success(res.paiement?.message || res.message);
       setDialogOuvert(false);
-    } catch (err: any) {
-      toast.error(err.message);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Une erreur est survenue.');
     } finally {
       setEnvoi(false);
       await chargerEtat(selection);
@@ -105,8 +105,8 @@ const RenouvellementPage: React.FC<RenouvellementPageProps> = ({ titre = 'Renouv
       if (res.data.statut === 'CONFIRME') toast.success(res.message, { duration: 6000 });
       else if (res.data.statut === 'EN_ATTENTE_PAIEMENT') toast(res.message, { icon: '⏳' });
       else toast.error(res.message);
-    } catch (err: any) {
-      toast.error(err.message);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Une erreur est survenue.');
     } finally {
       setVerification(false);
       if (selection) await chargerEtat(selection);

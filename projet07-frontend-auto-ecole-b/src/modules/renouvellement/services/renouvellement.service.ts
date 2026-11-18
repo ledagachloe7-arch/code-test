@@ -94,15 +94,22 @@ export interface CriteresRecherche {
   date_naissance?: string;
 }
 
-function messageErreur(error: any, defaut: string): string {
-  return error?.response?.data?.message || error?.message || defaut;
+function messageErreur(error: unknown, defaut: string): string {
+  const e = error as { response?: { data?: { message?: string } }; message?: string } | undefined;
+  return e?.response?.data?.message || e?.message || defaut;
 }
 
 /** Regroupe les lignes h_permis par titulaire (numéro d'identité, sinon nom + prénom + date de naissance). */
+/** Numéro de permis comparable : sans tirets ni espaces, en majuscules. */
+export const normaliserNumero = (n?: string | null) => String(n ?? '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+
+/** Identifie un titulaire : numéro de pièce d'identité, sinon nom + prénom + date de naissance. */
+const cleTitulaire = (l: PermisResultat) => l.numero_identite || `${l.nom}|${l.prenom ?? ''}|${l.date_naissance ?? ''}`;
+
 function regrouperParTitulaire(lignes: PermisResultat[]): TitulaireResultat[] {
   const groupes = new Map<string, TitulaireResultat>();
   for (const l of lignes) {
-    const cle = l.numero_identite || `${l.nom}|${l.prenom ?? ''}|${l.date_naissance ?? ''}`;
+    const cle = cleTitulaire(l);
     const g = groupes.get(cle);
     if (g) {
       g.categories.push(l);
@@ -115,6 +122,36 @@ function regrouperParTitulaire(lignes: PermisResultat[]): TitulaireResultat[] {
 }
 
 export const renouvellementService = {
+  /**
+   * Recherche par numéro de permis : le permis dont le numéro correspond EXACTEMENT (sans tirets) désigne le titulaire.
+   * On ramène alors toutes ses catégories et les personnes portant le même nom (affichées, non sélectionnées).
+   * Le titulaire exact est placé en tête et retourné dans `exact`.
+   */
+  async rechercherParNumero(numeroSaisi: string): Promise<{ titulaires: TitulaireResultat[]; exact: TitulaireResultat | null }> {
+    const numero = normaliserNumero(numeroSaisi);
+    if (!numero) throw new Error('Saisissez le numéro du permis.');
+    try {
+      const { data } = await axiosClient.get('/h-permis/recherche', { params: { numero_permis: numero, per_page: 100 } });
+      let lignes = (data?.data ?? []) as PermisResultat[];
+      const ligneExacte = lignes.find((l) => normaliserNumero(l.numero_permis) === numero);
+      if (!ligneExacte) return { titulaires: regrouperParTitulaire(lignes), exact: null };
+
+      const parNom = await axiosClient.get('/h-permis/recherche', {
+        params: { nom: ligneExacte.nom, ...(ligneExacte.prenom ? { prenom: ligneExacte.prenom } : {}), per_page: 100 },
+      });
+      const autres = ((parNom.data?.data ?? []) as PermisResultat[]).filter((l) => !lignes.some((x) => x.id === l.id));
+      lignes = [...lignes, ...autres];
+
+      const titulaires = regrouperParTitulaire(lignes);
+      const cleExacte = cleTitulaire(ligneExacte);
+      const exact = titulaires.find((t) => t.cle === cleExacte) ?? null;
+      if (exact) exact.hPermisId = ligneExacte.id;
+      return { titulaires: exact ? [exact, ...titulaires.filter((t) => t !== exact)] : titulaires, exact };
+    } catch (error) {
+      throw new Error(messageErreur(error, 'Erreur lors de la recherche.'));
+    }
+  },
+
   async rechercherTitulaires(criteres: CriteresRecherche): Promise<TitulaireResultat[]> {
     const params = Object.fromEntries(
       Object.entries(criteres).filter(([, v]) => typeof v === 'string' && v.trim() !== '').map(([k, v]) => [k, (v as string).trim()]),

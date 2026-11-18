@@ -63,7 +63,8 @@ export interface ResultatShortcode {
 }
 
 export interface SaisieDuplicata {
-  permisId: string;
+  /** Catégories (lignes h_permis) d'un même titulaire ; la première est le permis principal. */
+  permisIds: string[];
   motif: MotifDuplicata;
   precision: string;
   observations: string;
@@ -77,6 +78,7 @@ export interface DuplicataCree {
   numero_dossier: string;
   statut_dossier: string;
   numero_permis_source: string;
+  categories: string[];
 }
 
 /** Seul un shortcode confirmé ACTIF par le serveur autorise la soumission. */
@@ -142,7 +144,7 @@ export const duplicataService = {
   /** Crée le dossier de duplicata (contrôles refaits côté serveur). */
   async soumettre(saisie: SaisieDuplicata): Promise<DuplicataCree> {
     const fd = new FormData();
-    fd.append('h_permis_id', saisie.permisId);
+    saisie.permisIds.forEach((id) => fd.append('h_permis_ids[]', id));
     fd.append('motif', saisie.motif);
     if (saisie.motif === 'AUTRE') fd.append('motif_precision', saisie.precision);
     if (saisie.observations.trim()) fd.append('observations', saisie.observations.trim());
