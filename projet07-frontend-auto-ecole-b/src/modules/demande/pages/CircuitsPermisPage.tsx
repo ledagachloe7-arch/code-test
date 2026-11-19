@@ -8,6 +8,7 @@ import NouvelleDemandeePage from './NouvelleDemandeePage';
 import RenouvellementPage from '../../renouvellement/pages/RenouvellementPage';
 import MiseAJourPage from '../../mise-a-jour/pages/MiseAJourPage';
 import DuplicataPermisRosePage from '../../duplicata/pages/DuplicataPermisRosePage';
+import InformatisationPage from '../../informatisation/pages/InformatisationPage';
 
 /**
  * Permis de conduire : circuits Permis rose / Permis vert.
@@ -24,7 +25,7 @@ interface SousCircuit {
    */
   typesDemande?: string[];
   /** Sous-circuit avec son propre écran (hors parcours « Nouvelle demande »). */
-  ecran?: 'renouvellement' | 'mise-a-jour' | 'duplicata-rose';
+  ecran?: 'renouvellement' | 'mise-a-jour' | 'duplicata-rose' | 'informatisation';
 }
 
 interface Circuit {
@@ -74,6 +75,7 @@ const CIRCUITS: Circuit[] = [
         id: 'informatisation',
         libelle: 'Informatisation permis de conduire',
         description: 'Informatisation d’un permis rose existant.',
+        ecran: 'informatisation',
       },
     ],
   },
@@ -158,6 +160,16 @@ const CircuitsPermisPage: React.FC = () => {
   if (circuit && sousCircuit?.ecran === 'renouvellement') {
     return (
       <RenouvellementPage
+        titre={`${circuit.libelle} — ${sousCircuit.libelle}`}
+        couleur={circuit.couleur}
+        onRetour={() => setSousCircuit(null)}
+      />
+    );
+  }
+
+  if (circuit && sousCircuit?.ecran === 'informatisation') {
+    return (
+      <InformatisationPage
         titre={`${circuit.libelle} — ${sousCircuit.libelle}`}
         couleur={circuit.couleur}
         onRetour={() => setSousCircuit(null)}

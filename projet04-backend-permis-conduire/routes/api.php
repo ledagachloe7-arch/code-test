@@ -31,6 +31,7 @@ use App\Http\Controllers\Api\MoovPaymentController;
 use App\Http\Controllers\Api\RenouvellementController;
 use App\Http\Controllers\Api\ModificationDemandeController;
 use App\Http\Controllers\Api\DuplicataRoseController;
+use App\Http\Controllers\Api\InformatisationController;
 use App\Http\Controllers\Api\MoovRengusVerificationController;
 use App\Http\Controllers\Api\PublicSmsController;
 use App\Http\Controllers\Api\PaiementAirtelCallbackController;
@@ -321,6 +322,13 @@ Route::middleware(['auth.token'])->group(function () {
     // Duplicata du permis rose (contrôle shortcode + création du dossier lié au permis source)
     Route::get('/duplicata-rose/permis/{hPermisId}/shortcode', [DuplicataRoseController::class, 'shortcode'])->name('duplicata-rose.shortcode');
     Route::post('/duplicata-rose', [DuplicataRoseController::class, 'store'])->middleware('throttle:10,1')->name('duplicata-rose.store');
+
+    // Informatisation des anciens permis roses (registre Excel → nouveau numéro unique)
+    Route::get('/informatisation/parametres', [InformatisationController::class, 'parametres'])->name('informatisation.parametres');
+    Route::post('/informatisation/import', [InformatisationController::class, 'importer'])->name('informatisation.import');
+    Route::get('/informatisation/recherche', [InformatisationController::class, 'rechercher'])->name('informatisation.recherche');
+    Route::get('/informatisation/lignes', [InformatisationController::class, 'lignes'])->name('informatisation.lignes');
+    Route::post('/informatisation/anciens/{id}/informatiser', [InformatisationController::class, 'informatiser'])->middleware('throttle:30,1')->name('informatisation.informatiser');
     // H Permis avec des erreur Routes
     Route::get('/change-permis-default/{nomNumeroPermis}', [HEPermisController::class, 'index']);
     Route::post('/create-date_defaul', [HEPermisController::class, 'store']);
