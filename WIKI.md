@@ -241,6 +241,24 @@ L'interface de connexion utilise la route API **`POST /api/auth/login-direct`**.
 
 ---
 
+### [2026-11-18] - Intégration complète de MinIO (Docker S3) et abandon d'Alfresco
+
+* **Composant/Projet concerné :** `projet04-backend-permis-conduire` & Infrastructure Docker Locale
+  * **Fichiers modifiés :**
+    * `projet04-backend-permis-conduire/.env`
+    * `projet04-backend-permis-conduire/config/filesystems.php`
+    * `projet04-backend-permis-conduire/app/Services/MinioService.php`
+    * `projet04-backend-permis-conduire/app/Http/Controllers/Api/DocumentController.php`
+    * `projet04-backend-permis-conduire/app/Http/Controllers/Api/DossierController.php`
+  * **Solution Mise en Œuvre :**
+    * **Conteneur Docker MinIO (`minio-server`)** : Déploiement local sur les ports `9000` (API S3) et `9001` (Console Web) avec volume persistant `minio_data` et redémarrage automatique (`--restart unless-stopped`).
+    * **Configuration S3/MinIO** : Définition de `AWS_ACCESS_KEY_ID=minioadmin`, `AWS_SECRET_ACCESS_KEY=minioadmin`, `AWS_DEFAULT_REGION=us-east-1`, `AWS_BUCKET=documents`, `AWS_ENDPOINT=http://127.0.0.1:9000`, `AWS_USE_PATH_STYLE_ENDPOINT=true`.
+    * **Robustification de `MinioService.php`** : Création automatique du bucket (`ensureBucketExists()`), assainissement des noms de dossiers/fichiers et gestion fiable des URLs temporaires.
+    * **Suppression d'Alfresco** : Remplacement de `AlfrescoCrudService` par `MinioService` dans `DossierController::uploadDocument()` et `DocumentController::store()` / `download()`.
+  * **Résultat :** Tous les documents téléversés (pièces justificatives, dossiers) sont désormais stockés et servis via MinIO local sans aucune dépendance envers Alfresco.
+
+---
+
 ## 6. Procédure de Démarrage Local
 
 ### Étape 0 - S'assurer que le conteneur Docker Redis tourne :
@@ -248,6 +266,11 @@ L'interface de connexion utilise la route API **`POST /api/auth/login-direct`**.
 docker start redis-server
 # Si le conteneur n'existe pas encore :
 # docker run -d --name redis-server -p 6379:6379 --restart unless-stopped redis:7-alpine
+
+# MinIO (Stockage documents S3 port 9000 + Console Web port 9001)
+docker start minio-server
+# Si le conteneur n'existe pas encore :
+# docker run -d --name minio-server -p 9000:9000 -p 9001:9001 -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin --restart unless-stopped -v minio_data:/data elestio/minio:latest server /data --console-address :9001
 ```
 
 ### Étape 1 - Backend Laravel :

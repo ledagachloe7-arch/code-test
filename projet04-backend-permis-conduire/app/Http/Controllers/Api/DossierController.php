@@ -39,7 +39,7 @@ use Illuminate\Support\Facades\Mail;
 use App\Models\TypeDemande;
 use App\Jobs\SendAirtelSmsJob;
 use App\Services\AirtelSmsService;
-use App\Services\{AlfrescoCrudService, PaiementService, PaiementHistoriqueService, ChangePermisService};
+use App\Services\{MinioService, PaiementService, PaiementHistoriqueService, ChangePermisService};
 use Illuminate\Support\Facades\Response;
 use Illuminate\Support\Facades\Auth;
 use Dedoc\Scramble\Attributes\Endpoint;
@@ -69,19 +69,19 @@ use App\Http\Helpers\CentreScopeHelper;
 class DossierController extends Controller
 {
     protected DossierService $dossierService;
-    protected $alfresco;
+    protected MinioService $minioService;
     protected $paynalaService;
     protected WebSocketService $webSocketService;
     protected ChangePermisService $changePermisService;
     public function __construct(
         PaiementService $paynalaService,
         DossierService $dossierService,
-        AlfrescoCrudService $alfresco,
+        MinioService $minioService,
         WebSocketService $webSocketService,
         ChangePermisService $changePermisService
     ) {
         $this->dossierService = $dossierService;
-        $this->alfresco = $alfresco;
+        $this->minioService = $minioService;
         $this->paynalaService = $paynalaService;
         $this->webSocketService = $webSocketService;
         $this->changePermisService = $changePermisService;
@@ -855,35 +855,36 @@ class DossierController extends Controller
                 ], 403);
             }
             $typeDemande = TypeDemande::find($dossier->type_demande_id);
+            $dossierName = $typeDemande?->name ?? 'dossier';
+            $nomUsage = trim(($user->personne->nom ?? '') . '_' . ($user->personne->prenom ?? ''));
 
-            $nodeId = $this->alfresco->uploadSimple(
-                $request,
-                dossier: $typeDemande->name,
-                uuid: $user->personne->id,
-                nomUsage: $user->personne->nom . "_" . $user->personne->prenom
+            $file = $request->file('fichier');
+
+            // Téléversement via MinIO
+            $minioResult = $this->minioService->upload(
+                $file,
+                dossier: $dossierName,
+                uuid: (string) $user->personne->id,
+                nomUsage: $nomUsage
             );
-            if ($nodeId['fileId'] == null) {
+
+            if (empty($minioResult['path'])) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Erreur lors du televersement du fichier dans alfresco. il se peut que le fichier existe déjà Dans la ged.',
+                    'message' => 'Erreur lors du téléversement du fichier dans MinIO : ' . ($minioResult['error'] ?? 'erreur inconnue'),
                 ], 500);
             } else {
-                // Upload du fichier
-                $file = $request->file('fichier');
-                $fileName = time() . '_' . $file->getClientOriginalName();
-                $filePath = $file->storeAs('documents/' . date('Y/m'), $fileName, 'public');
-
-                // Créer l'enregistrement du document via la relation polymorphique (automatique)
+                // Créer l'enregistrement du document via la relation polymorphique (stocké dans MinIO)
                 $document = $dossier->documents()->create([
                     'type_document_id' => $request->type_document_id,
                     'nom_fichier' => $file->getClientOriginalName(),
-                    'chemin_fichier' => $filePath,
+                    'chemin_fichier' => $minioResult['path'],
                     'type_mime' => $file->getMimeType(),
                     'taille_fichier' => $file->getSize(),
                     'valide' => false,
                     'commentaires' => $request->commentaires,
                     'referenciel_id' => $request->referenciel_id,
-                    'node_id_alfresco' => $nodeId['fileId'],
+                    'node_id_alfresco' => $minioResult['path'],
                 ]);
 
                 // Mettre à jour la date de modification du dossier

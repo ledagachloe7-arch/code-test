@@ -68,19 +68,23 @@ class PieceJustificativeController extends Controller
             ], 404);
         }
 
-        // Vérifier que le fichier existe
-        if (!Storage::disk('public')->exists($document->chemin_fichier)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Le fichier n\'existe plus sur le serveur.'
-            ], 404);
+        // Vérifier sur MinIO (S3) en priorité, puis fallback disque public
+        $minioKey = $document->node_id_alfresco ?: $document->chemin_fichier;
+        if ($minioKey && Storage::disk('s3')->exists($minioKey)) {
+            return Storage::disk('s3')->download($minioKey, $document->nom_fichier);
         }
 
-        // Retourner le fichier pour téléchargement
-        return Storage::disk('public')->download(
-            $document->chemin_fichier,
-            $document->nom_fichier
-        );
+        if ($document->chemin_fichier && Storage::disk('public')->exists($document->chemin_fichier)) {
+            return Storage::disk('public')->download(
+                $document->chemin_fichier,
+                $document->nom_fichier
+            );
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Le fichier n\'existe plus sur le serveur.'
+        ], 404);
     }
 
     /**
@@ -99,8 +103,15 @@ class PieceJustificativeController extends Controller
             ], 404);
         }
 
-        // Vérifier que le fichier existe
-        if (!Storage::disk('public')->exists($document->chemin_fichier)) {
+        $downloadUrl = null;
+        $minioKey = $document->node_id_alfresco ?: $document->chemin_fichier;
+        if ($minioKey && Storage::disk('s3')->exists($minioKey)) {
+            $downloadUrl = Storage::disk('s3')->temporaryUrl($minioKey, now()->addMinutes(15));
+        } elseif ($document->chemin_fichier && Storage::disk('public')->exists($document->chemin_fichier)) {
+            $downloadUrl = Storage::disk('public')->url($document->chemin_fichier);
+        }
+
+        if (!$downloadUrl) {
             return response()->json([
                 'success' => false,
                 'message' => 'Le fichier n\'existe plus sur le serveur.'
@@ -110,7 +121,7 @@ class PieceJustificativeController extends Controller
         // Retourner l'URL de téléchargement
         return response()->json([
             'success' => true,
-            'download_url' => Storage::disk('public')->url($document->chemin_fichier),
+            'download_url' => $downloadUrl,
             'document' => [
                 'id' => $document->id,
                 'nom_fichier' => $document->nom_fichier,
@@ -141,6 +152,11 @@ class PieceJustificativeController extends Controller
                 'etape_id' => $piece->etape_id,
             ],
             'documents' => collect($documents->items())->map(function ($document) {
+                $minioKey = $document->node_id_alfresco ?: $document->chemin_fichier;
+                $downloadUrl = $minioKey
+                    ? Storage::disk('s3')->url($minioKey)
+                    : ($document->chemin_fichier ? Storage::disk('public')->url($document->chemin_fichier) : null);
+
                 return [
                     'id' => $document->id,
                     'nom_fichier' => $document->nom_fichier,
@@ -148,7 +164,7 @@ class PieceJustificativeController extends Controller
                     'taille_fichier' => $document->taille_fichier,
                     'valide' => $document->valide,
                     'commentaires' => $document->commentaires,
-                    'download_url' => Storage::disk('public')->url($document->chemin_fichier),
+                    'download_url' => $downloadUrl,
                     'created_at' => $document->created_at,
                     'updated_at' => $document->updated_at,
                     'node_id_alfresco' => $document->node_id_alfresco,

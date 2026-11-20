@@ -120,9 +120,8 @@ class DocumentController extends Controller
 
             DB::beginTransaction();
 
-            // 1️⃣ Upload physique
+            // 1️⃣ Récupération du fichier (stocké directement dans MinIO)
             $file = $request->file('fichier');
-            $path = $file->store('uploads'); // => storage/app/uploads/contrats
 
             // 2️⃣ Normalisation du type polymorphique
             $documentableType = str_replace('\\\\', '\\', trim($request->documentable_type, "\\"));
@@ -140,39 +139,41 @@ class DocumentController extends Controller
             }
 
 
-            $candidat = Candidat::find($documentable->candidat_id);
+            $candidat = null;
+            $dossier = null;
+            if ($documentable instanceof Dossier) {
+                $dossier = $documentable;
+                $candidat = Candidat::find($dossier->candidat_id);
+            } elseif ($documentable instanceof Candidat) {
+                $candidat = $documentable;
+            }
 
-            $dossier = Dossier::find($documentable->id);
-
-            $typeDemande = TypeDemande::find($dossier->type_demande_id);
-            // $referentiel = Referentiel::find($dossier->referenciel_id);
-            // Upload dans Alfresco
-            // dd($typeDemande);
-            //il me faut le nom du dossier
-            //le nom d'usage de la personne
-            //le type de document
-            //le uuid de la personne
+            $typeDemande = $dossier ? TypeDemande::find($dossier->type_demande_id) : null;
+            $dossierName = $typeDemande?->name ?? 'general';
+            $uuid = $candidat?->personne_id ?? $documentable->id;
+            $nomUsage = ($candidat && $candidat->personne)
+                ? ($candidat->personne->nom . "_" . $candidat->personne->prenom)
+                : 'document_' . time();
 
             $nodeId = $this->minioService->upload(
                 $request->file('fichier'),
-                dossier: $typeDemande->name,
-                uuid: $candidat->personne_id,
-                nomUsage: $candidat->personne->nom . "_" . $candidat->personne->prenom
+                dossier: $dossierName,
+                uuid: $uuid,
+                nomUsage: $nomUsage
             );
-            //  dd($id);
-            //  $apiUrl = env('APP_URL');
-            //dd( $nodeId);
 
-            // 3️ - Création du document en base
-            if ($nodeId['path'] == null) {
+            // 3️⃣ - Création du document en base
+            if (empty($nodeId['path'])) {
+                DB::rollBack();
                 return response()->json([
                     'success' => false,
-                    'message' => 'Erreur lors du televersement du fichier dans alfresco. il se peut que le fichier existe déjà Dans la ged.',
+                    'message' => 'Erreur lors du téléversement du fichier dans le stockage MinIO.',
+                    'error' => config('app.debug') ? ($nodeId['error'] ?? null) : null,
                 ], 500);
             } else {
                 $document = Document::create([
                     'nom_fichier' => $file->getClientOriginalName(),
-                    'chemin_fichier' => $path,
+                    'chemin_fichier' => $nodeId['path'],
                     'type_mime' => $file->getMimeType(),
                     'taille_fichier' => $file->getSize(),
                     'valide' => $request->boolean('valide', true),
@@ -325,11 +326,10 @@ class DocumentController extends Controller
             DB::commit();
 
             Log::info('Document supprimé', ['document_id' => $id]);
-            //recuperation du nodeId à partir du chemin_fichier
-            $parts = explode('/', $document->chemin_fichier);
-            $nodeId = end($parts);
-            // Suppression dans Alfresco
-            $this->minioService->delete($document->node_id_alfresco);
+            $minioKey = $document->node_id_alfresco ?: $document->chemin_fichier;
+            if ($minioKey) {
+                $this->minioService->delete($minioKey);
+            }
 
             return response()->json([
                 'success' => true,
@@ -350,18 +350,38 @@ class DocumentController extends Controller
     public function download(Document $document)
     {
         $path = $document->chemin_fichier;
-        //dd($document);
+        $minioPath = $document->node_id_alfresco;
 
-        if (!Storage::exists($path)) {
-            return response()->json([
-                'success' => false,
-                'message' => "Le fichier demandé est introuvable."
-            ], 404);
+        // 1. Vérifier sur MinIO (disque S3) en priorité
+        if ($minioPath && Storage::disk('s3')->exists($minioPath)) {
+            return Storage::disk('s3')->response($minioPath, $document->nom_fichier, [
+                'Content-Type' => $document->type_mime,
+            ]);
         }
 
-        // Pour afficher dans le navigateur (PDF, images, etc.)
-        return Storage::response($path, $document->nom_fichier, [
-            'Content-Type' => $document->type_mime,
-        ]);
+        if ($path && Storage::disk('s3')->exists($path)) {
+            return Storage::disk('s3')->response($path, $document->nom_fichier, [
+                'Content-Type' => $document->type_mime,
+            ]);
+        }
+
+        // 2. Fallback sur le stockage local standard (anciens fichiers)
+        if ($path && Storage::exists($path)) {
+            return Storage::response($path, $document->nom_fichier, [
+                'Content-Type' => $document->type_mime,
+            ]);
+        }
+
+        // 3. Fallback sur le disque public (anciens fichiers)
+        if ($path && Storage::disk('public')->exists($path)) {
+            return Storage::disk('public')->response($path, $document->nom_fichier, [
+                'Content-Type' => $document->type_mime,
+            ]);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => "Le fichier demandé est introuvable."
+        ], 404);
     }
 }
