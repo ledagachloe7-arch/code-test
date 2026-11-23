@@ -24,9 +24,12 @@ class AuthentikTokenMiddleware
             ], 401);
         }
 
-        // 2. Vérifier le jeton Sanctum en base de données (avec cache Redis pour éliminer 3 requêtes réseau par appel HTTP)
+        // 2. Vérifier le jeton Sanctum.
+        // Cache::remember() est compatible avec CACHE_STORE=file.
         $tokenHash = hash('sha256', $plainTextToken);
-        $cachedAuth = Cache::tags(['auth_tokens'])->remember("auth:token:{$tokenHash}", 600, function () use ($plainTextToken) {
+        $cacheKey = "auth:token:{$tokenHash}";
+
+        $cachedAuth = Cache::remember($cacheKey, 600, function () use ($plainTextToken) {
             $accessToken = PersonalAccessToken::findToken($plainTextToken);
 
             if (!$accessToken) {
@@ -57,12 +60,12 @@ class AuthentikTokenMiddleware
         $accessToken = $cachedAuth['accessToken'];
         $user = $cachedAuth['user'];
 
-        // 4. Vérifier l'expiration individuelle du jeton.
+        // 3. Vérifier l'expiration individuelle du jeton.
         if (
             $accessToken->expires_at !== null &&
             $accessToken->expires_at->isPast()
         ) {
-            Cache::tags(['auth_tokens'])->forget("auth:token:{$tokenHash}");
+            Cache::forget($cacheKey);
             $accessToken->delete();
 
             return response()->json([
@@ -71,7 +74,7 @@ class AuthentikTokenMiddleware
             ], 401);
         }
 
-        // 5. Vérifier également la durée globale de Sanctum, si configurée.
+        // 4. Vérifier également la durée globale de Sanctum.
         $expirationMinutes = config('sanctum.expiration');
 
         if (
@@ -82,7 +85,7 @@ class AuthentikTokenMiddleware
                 now()->subMinutes((int) $expirationMinutes)
             )
         ) {
-            Cache::tags(['auth_tokens'])->forget("auth:token:{$tokenHash}");
+            Cache::forget($cacheKey);
             $accessToken->delete();
 
             return response()->json([
@@ -91,7 +94,7 @@ class AuthentikTokenMiddleware
             ], 401);
         }
 
-        // 6. Refuser les refresh tokens sur les routes protégées.
+        // 5. Refuser les refresh tokens sur les routes protégées.
         // Seuls les jetons possédant la capacité "access" sont autorisés.
         if (!$accessToken->can('access')) {
             return response()->json([
@@ -100,13 +103,13 @@ class AuthentikTokenMiddleware
             ], 401);
         }
 
-        // 7. Associer le jeton à l'utilisateur authentifié.
+        // 6. Associer le jeton à l'utilisateur authentifié.
         $user->withAccessToken($accessToken);
 
         // Charger les informations de la personne si nécessaire.
         $user->loadMissing('personne');
 
-        // 8. Conserver la compatibilité avec les contrôleurs existants.
+        // 7. Conserver la compatibilité avec les contrôleurs existants.
         $request->attributes->set('authenticated_user', $user);
 
         $request->attributes->set('token_payload', [
@@ -115,10 +118,10 @@ class AuthentikTokenMiddleware
             'role' => $user->role,
         ]);
 
-        // 9. Rendre l'utilisateur disponible via Auth::user().
+        // 8. Rendre l'utilisateur disponible via Auth::user().
         Auth::setUser($user);
 
-        // 10. Continuer vers la route demandée.
+        // 9. Continuer vers la route demandée.
         return $next($request);
     }
 }
