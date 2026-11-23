@@ -6,6 +6,7 @@ use App\Exceptions\ModificationException;
 use App\Models\HPermis;
 use App\Models\ModificationDemande;
 use App\Models\ModificationDemandeLigne;
+use App\Support\SupportPermis;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -23,6 +24,8 @@ use Illuminate\Support\Str;
  * - Un responsable habilité, distinct du demandeur, approuve ou rejette (motif obligatoire en cas de rejet).
  * - Si une ligne porte sur la date de naissance, toute la demande requiert la validation renforcée.
  * - Les anciennes valeurs sont conservées dans les lignes (historique non modifiable).
+ * - Commun au permis rose et à la fiche d'enregistrement (permis vert) : une demande porte sur un seul support
+ *   (colonne support) et ne s'applique qu'aux lignes du titulaire de ce support.
  */
 class ModificationDemandeService
 {
@@ -34,7 +37,7 @@ class ModificationDemandeService
     // Titulaire
     // ------------------------------------------------------------------
 
-    /** Toutes les lignes h_permis (catégories) du titulaire auquel appartient ce permis. */
+    /** Toutes les lignes h_permis (catégories) du titulaire auquel appartient ce permis, pour le même support. */
     public function lignesDuTitulaire(string $hPermisId, bool $verrouiller = false): Collection
     {
         $permis = HPermis::find($hPermisId);
@@ -45,6 +48,7 @@ class ModificationDemandeService
         $query = HPermis::query();
         if (! empty($permis->numero_identite)) {
             $query->where('numero_identite', $permis->numero_identite);
+            SupportPermis::filtrer($query, SupportPermis::de($permis));
         } else {
             $query->whereKey($permis->id);
         }
@@ -55,9 +59,9 @@ class ModificationDemandeService
         return $query->orderBy('categorie')->get();
     }
 
-    private function lignesParIdentite(string $numeroIdentite, bool $verrouiller = false): Collection
+    private function lignesParIdentite(string $numeroIdentite, string $support, bool $verrouiller = false): Collection
     {
-        $query = HPermis::where('numero_identite', $numeroIdentite);
+        $query = SupportPermis::filtrer(HPermis::where('numero_identite', $numeroIdentite), $support);
         if ($verrouiller) {
             $query->lockForUpdate();
         }
@@ -82,9 +86,11 @@ class ModificationDemandeService
     {
         $lignes = $this->lignesDuTitulaire($hPermisId);
         $t = $lignes->first();
+        $support = SupportPermis::de($t);
 
         return [
             'h_permis_id' => $t->id,
+            'support' => $support,
             'titulaire' => [
                 'numero_identite' => $t->numero_identite,
                 'nom' => $t->nom,
@@ -104,6 +110,7 @@ class ModificationDemandeService
             'champs' => config('modifications.champs'),
             'demandes' => ModificationDemande::with('lignes')
                 ->where('numero_identite', $t->numero_identite)
+                ->where('support', $support)
                 ->orderByDesc('created_at')->get(),
             'peut_valider' => $this->estValidateur($agent),
         ];
@@ -349,6 +356,7 @@ class ModificationDemandeService
                 'id' => (string) Str::uuid(),
                 'numero' => 'MOD-' . now()->format('Ymd') . '-' . strtoupper(Str::random(6)),
                 'numero_identite' => $titulaire->numero_identite,
+                'support' => SupportPermis::de($titulaire),
                 'numero_permis' => $titulaire->numero_permis,
                 'nom_titulaire' => $titulaire->nom,
                 'prenom_titulaire' => $titulaire->prenom,
@@ -378,7 +386,7 @@ class ModificationDemandeService
             $d = ModificationDemande::whereKey($id)->lockForUpdate()->first() ?? throw new ModificationException('Demande introuvable.', 404);
             $this->exigerAuteur($agent, $d);
 
-            $titulaire = $this->lignesParIdentite($d->numero_identite)->first()
+            $titulaire = $this->lignesParIdentite($d->numero_identite, $d->support)->first()
                 ?? throw new ModificationException('Titulaire introuvable.', 404);
             $lignes = $this->preparerLignes($data['lignes'] ?? [], $titulaire);
 
@@ -433,10 +441,11 @@ class ModificationDemandeService
         }
 
         // Verrou sur le titulaire : deux soumissions simultanées ne peuvent pas viser le même champ.
-        $this->lignesParIdentite($d->numero_identite, true);
+        $this->lignesParIdentite($d->numero_identite, $d->support, true);
         $conflit = ModificationDemandeLigne::query()
             ->join('modification_demandes as md', 'md.id', '=', 'modification_demande_lignes.demande_id')
             ->where('md.numero_identite', $d->numero_identite)
+            ->where('md.support', $d->support)
             ->where('md.statut', ModificationDemande::STATUT_SOUMISE)
             ->where('md.id', '!=', $d->id)
             ->whereIn('modification_demande_lignes.champ', $d->lignes->pluck('champ'))
@@ -464,10 +473,11 @@ class ModificationDemandeService
     // Validation
     // ------------------------------------------------------------------
 
-    public function aValider($agent)
+    public function aValider($agent, ?string $support = null)
     {
         return ModificationDemande::with('lignes')
             ->where('statut', ModificationDemande::STATUT_SOUMISE)
+            ->when($support, fn ($q) => $q->where('support', $support))
             ->orderBy('date_soumission')
             ->get()
             ->map(function (ModificationDemande $d) use ($agent) {
@@ -491,7 +501,7 @@ class ModificationDemandeService
                 throw new ModificationException($refus, 403);
             }
 
-            $permis = $this->lignesParIdentite($d->numero_identite, true);
+            $permis = $this->lignesParIdentite($d->numero_identite, $d->support, true);
             if ($permis->isEmpty()) {
                 throw new ModificationException('Titulaire introuvable.', 404);
             }

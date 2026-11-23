@@ -32,14 +32,16 @@ import type { NumeroPermisParts, PermisFormatType } from '../../cnepc/forms/type
 import SaisieNumeroPermis, { PARTS_VIDES } from '../components/SaisieNumeroPermis';
 import {
   duplicataService,
-  estPermisRose,
+  LIBELLES_SUPPORT,
   MESSAGES_SHORTCODE,
   MOTIFS_DUPLICATA,
   OBSERVATIONS_MAX,
   PRECISION_MAX,
   shortcodeAutoriseSoumission,
-  TYPE_DEMANDE_DUPLICATA_ROSE,
+  supportDe,
+  TYPES_DEMANDE_DUPLICATA,
   type CriteresRecherchePermis,
+  type SupportPermis,
   type DuplicataCree,
   type ResultatShortcode,
   type ModeRecherche,
@@ -52,6 +54,8 @@ interface Props {
   titre?: string;
   couleur?: string;
   onRetour?: () => void;
+  /** ROSE = duplicata du permis rose, VERT = duplicata de la fiche d'enregistrement. */
+  support?: SupportPermis;
 }
 
 const Bloc: React.FC<{ lettre: string; titre: string; actif?: boolean; children: React.ReactNode }> = ({ lettre, titre, actif = true, children }) => (
@@ -83,12 +87,17 @@ const cleTitulaire = (p: PermisSource) => p.numero_identite || `${p.nom}|${p.pre
 const TAILLE_MAX_JUSTIFICATIF = 5 * 1024 * 1024;
 
 /**
- * Duplicata du permis de conduire rose (cadrage v1.0 du 17/11/2026).
+ * Duplicata du permis de conduire rose (cadrage v1.0 du 17/11/2026) ou de la fiche d'enregistrement (permis vert).
  * Parcours : recherche du permis source → fiche lecture seule → contrôle shortcode (serveur) → motif → récapitulatif → création.
+ * Seules les lignes du support de l'écran sont sélectionnables ; les autres restent visibles, grisées.
  * Tous les contrôles sont refaits par le serveur à la création ; ceux de cette page ne sont qu'une aide à la saisie.
  * Le permis source n'est jamais modifié depuis ce parcours.
  */
-const DuplicataPermisRosePage: React.FC<Props> = ({ titre = 'Duplicata du permis rose', couleur, onRetour }) => {
+const DuplicataPermisRosePage: React.FC<Props> = ({ titre, couleur, onRetour, support = 'ROSE' }) => {
+  const libelleSupport = LIBELLES_SUPPORT[support];
+  const autreSupport = LIBELLES_SUPPORT[support === 'ROSE' ? 'VERT' : 'ROSE'];
+  const estEligible = (p: PermisSource) => supportDe(p) === support;
+  const titreAffiche = titre ?? `Duplicata — ${libelleSupport}`;
   // B — Recherche
   const [mode, setMode] = useState<ModeRecherche>('numero');
   const [criteres, setCriteres] = useState<CriteresRecherchePermis>({ numero_permis: '', nom: '', prenom: '', date_naissance: '' });
@@ -128,10 +137,10 @@ const DuplicataPermisRosePage: React.FC<Props> = ({ titre = 'Duplicata du permis
     setControle(null);
   };
 
-  /** Sélectionne un titulaire : toutes ses catégories roses présentes dans `liste` sont cochées. */
+  /** Sélectionne un titulaire : toutes ses catégories du support de l'écran présentes dans `liste` sont cochées. */
   const selectionnerTitulaire = (principal: PermisSource, liste: PermisSource[]) => {
     const cle = cleTitulaire(principal);
-    const ids = liste.filter((p) => estPermisRose(p) && cleTitulaire(p) === cle).map((p) => p.id);
+    const ids = liste.filter((p) => estEligible(p) && cleTitulaire(p) === cle).map((p) => p.id);
     setSelection(principal);
     setSelectionIds([principal.id, ...ids.filter((id) => id !== principal.id)]);
   };
@@ -151,7 +160,7 @@ const DuplicataPermisRosePage: React.FC<Props> = ({ titre = 'Duplicata du permis
       // Le registre stocke les numéros sans tirets (ex. 20072B88007) : la recherche se fait sur le numéro normalisé.
       let r = await duplicataService.rechercherPermis(mode, { ...criteres, numero_permis: normaliserNumero(numeroComplet) });
       // Recherche par numéro : le permis au numéro EXACT désigne le titulaire.
-      const exact = mode === 'numero' ? r.find((p) => estPermisRose(p) && estNumeroExact(p, numeroComplet)) : undefined;
+      const exact = mode === 'numero' ? r.find((p) => estEligible(p) && estNumeroExact(p, numeroComplet)) : undefined;
       if (exact) {
         // On ramène toutes ses catégories, ainsi que les homonymes (même nom et prénom) pour qu'ils soient visibles.
         const parNom = await duplicataService.rechercherPermis('identite', { nom: exact.nom, prenom: exact.prenom ?? '' });
@@ -166,7 +175,7 @@ const DuplicataPermisRosePage: React.FC<Props> = ({ titre = 'Duplicata du permis
         selectionnerTitulaire(exact, r);
       } else {
         setResultats(r);
-        const roses = r.filter(estPermisRose);
+        const roses = r.filter(estEligible);
         const titulaires = new Set(roses.map(cleTitulaire));
         // Un seul titulaire trouvé : toutes ses catégories sont sélectionnées, confirmation demandée.
         if (roses.length > 0 && titulaires.size === 1) selectionnerTitulaire(roses[0], r);
@@ -194,7 +203,7 @@ const DuplicataPermisRosePage: React.FC<Props> = ({ titre = 'Duplicata du permis
    * même titulaire, on coche / décoche la catégorie (au moins une reste sélectionnée).
    */
   const choisir = (p: PermisSource) => {
-    if (!estPermisRose(p) || !resultats) return;
+    if (!estEligible(p) || !resultats) return;
     reinitialiserApresPermis();
     if (!selection || cleTitulaire(p) !== cleTitulaire(selection)) {
       selectionnerTitulaire(p, resultats);
@@ -224,7 +233,7 @@ const DuplicataPermisRosePage: React.FC<Props> = ({ titre = 'Duplicata du permis
     setVerification(true);
     try {
       // Le service ne lève pas d'erreur : indisponibilité = NON_VERIFIE (jamais considéré comme réussi).
-      setControle(await duplicataService.verifierShortcode(p));
+      setControle(await duplicataService.verifierShortcode(p, support));
     } finally {
       setVerification(false);
     }
@@ -252,6 +261,7 @@ const DuplicataPermisRosePage: React.FC<Props> = ({ titre = 'Duplicata du permis
     try {
       const res = await duplicataService.soumettre({
         permisIds: [selection.id, ...selectionIds.filter((id) => id !== selection.id)],
+        support,
         motif, precision, observations, justificatif,
       });
       setCree(res);
@@ -287,7 +297,7 @@ const DuplicataPermisRosePage: React.FC<Props> = ({ titre = 'Duplicata du permis
           </IconButton>
         )}
         <Typography variant="h5" component="h1" fontWeight={700} sx={{ color: couleur }}>
-          {titre}
+          {titreAffiche}
         </Typography>
       </Stack>
 
@@ -302,9 +312,10 @@ const DuplicataPermisRosePage: React.FC<Props> = ({ titre = 'Duplicata du permis
 
       {/* A — Type */}
       <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mb: 2 }}>
-        <Chip label={`Type de demande : ${TYPE_DEMANDE_DUPLICATA_ROSE}`} sx={{ bgcolor: couleur, color: '#fff', fontWeight: 600 }} />
+        <Chip label={`Type de demande : ${TYPES_DEMANDE_DUPLICATA[support]}`} sx={{ bgcolor: couleur, color: '#fff', fontWeight: 600 }} />
         <Typography variant="body2" color="text.secondary">
-          Nouvelle demande liée à un permis rose déjà délivré — ni nouvelle délivrance, ni renouvellement.
+          Nouvelle demande liée à {support === 'VERT' ? "une fiche d'enregistrement déjà délivrée" : 'un permis rose déjà délivré'} — ni
+          nouvelle délivrance, ni renouvellement.
         </Typography>
       </Stack>
 
@@ -388,9 +399,9 @@ const DuplicataPermisRosePage: React.FC<Props> = ({ titre = 'Duplicata du permis
                   </TableHead>
                   <TableBody>
                     {resultats.map((p) => {
-                      const rose = estPermisRose(p);
+                      const rose = estEligible(p);
                       return (
-                        <Tooltip key={p.id} title={rose ? '' : "Fiche d'enregistrement (permis vert) : non éligible au duplicata rose."}>
+                        <Tooltip key={p.id} title={rose ? '' : `${autreSupport} : non éligible dans ce circuit (${libelleSupport}).`}>
                           <TableRow hover={rose} selected={selectionIds.includes(p.id)} onClick={() => choisir(p)}
                             sx={{ cursor: rose ? 'pointer' : 'not-allowed', '& td': rose ? {} : { color: 'text.disabled' } }}>
                             <TableCell padding="checkbox"><Checkbox size="small" checked={selectionIds.includes(p.id)} disabled={!rose} /></TableCell>
@@ -404,7 +415,7 @@ const DuplicataPermisRosePage: React.FC<Props> = ({ titre = 'Duplicata du permis
                             <TableCell>{formatDate(p.date_naissance)}</TableCell>
                             <TableCell>{p.categorie ?? '—'}</TableCell>
                             <TableCell>{formatDate(p.date_validite)}</TableCell>
-                            <TableCell>{rose ? 'Permis rose' : 'Fiche verte'}</TableCell>
+                            <TableCell>{LIBELLES_SUPPORT[supportDe(p)]}</TableCell>
                           </TableRow>
                         </Tooltip>
                       );

@@ -8,6 +8,12 @@ return [
     // Type de demande en base (distinct de DUPLICATAFICHEENREGISTREMENT).
     'type_demande' => 'DUPLICATA',
 
+    // Type de demande du dossier créé, par support (permis rose / fiche d'enregistrement = permis vert).
+    'types_demande' => [
+        'ROSE' => 'DUPLICATA',
+        'VERT' => 'DUPLICATAFICHEENREGISTREMENT',
+    ],
+
     // Statut initial du dossier créé (aligné sur le parcours « Nouvelle demande »).
     'statut_initial' => 'en_attente',
 

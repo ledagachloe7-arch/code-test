@@ -146,9 +146,10 @@ export const modificationService = {
     }
   },
 
-  async aValider(): Promise<{ peut_valider: boolean; data: ModificationDemande[] }> {
+  /** support : ROSE (permis rose) ou VERT (fiche d'enregistrement) ; absent = toutes les demandes. */
+  async aValider(support?: 'ROSE' | 'VERT'): Promise<{ peut_valider: boolean; data: ModificationDemande[] }> {
     try {
-      const { data } = await axiosClient.get('/modifications/a-valider');
+      const { data } = await axiosClient.get('/modifications/a-valider', { params: support ? { support } : {} });
       return { peut_valider: !!data.peut_valider, data: data.data ?? [] };
     } catch (error) {
       throw new Error(messageErreur(error, 'Impossible de charger les demandes à valider.'));

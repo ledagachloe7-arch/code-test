@@ -220,6 +220,10 @@ public function searchRegistre(string $numero): array
         if ($numeroPermis !== '') {
             $query->where('numero_permis', 'ILIKE', '%' . $this->escapeLikeWildcards($numeroPermis) . '%');
         }
+        // Facultatif : permis rose seulement (ROSE) ou fiches d'enregistrement seulement (VERT).
+        if ($support = \App\Support\SupportPermis::normaliser($criteria['support'] ?? null)) {
+            \App\Support\SupportPermis::filtrer($query, $support);
+        }
 
         return $query->paginate($perPage, ['*'], 'page', $page);
     }

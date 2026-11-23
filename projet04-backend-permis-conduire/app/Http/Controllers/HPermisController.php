@@ -85,6 +85,7 @@ class HPermisController extends Controller
             'prenom' => $validated['prenom'] ?? null,
             'date_naissance' => $validated['date_naissance'] ?? null,
             'numero_permis' => $validated['numero_permis'] ?? null,
+            'support' => $validated['support'] ?? null,
         ];
 
         $page = max(1, (int) ($validated['page'] ?? 1));

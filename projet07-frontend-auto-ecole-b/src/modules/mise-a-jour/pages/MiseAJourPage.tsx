@@ -17,7 +17,7 @@ import toast from 'react-hot-toast';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { useAppStore } from '../../../store';
 import RechercheTitulaire, { formatDate } from '../../renouvellement/components/RechercheTitulaire';
-import type { TitulaireResultat } from '../../renouvellement/services/renouvellement.service';
+import type { SupportPermis, TitulaireResultat } from '../../renouvellement/services/renouvellement.service';
 import { modificationService, type FicheTitulaire, type ModificationDemande } from '../services/modification.service';
 import FormulaireModification from '../components/FormulaireModification';
 import HistoriqueModifications from '../components/HistoriqueModifications';
@@ -27,6 +27,8 @@ interface MiseAJourPageProps {
   titre?: string;
   couleur?: string;
   onRetour?: () => void;
+  /** ROSE = permis rose, VERT = fiche d'enregistrement : recherche et demandes à valider limitées à ce support. */
+  support?: SupportPermis;
 }
 
 const Info: React.FC<{ label: string; valeur: React.ReactNode }> = ({ label, valeur }) => (
@@ -40,7 +42,7 @@ const Info: React.FC<{ label: string; valeur: React.ReactNode }> = ({ label, val
  * Mise à jour des informations personnelles : l'agent soumet une demande (champ, nouvelle valeur, motif, justificatif) ;
  * un responsable habilité, distinct du demandeur, l'approuve ou la rejette.
  */
-const MiseAJourPage: React.FC<MiseAJourPageProps> = ({ titre = 'Mise à jour des informations personnelles', couleur, onRetour }) => {
+const MiseAJourPage: React.FC<MiseAJourPageProps> = ({ titre = 'Mise à jour des informations personnelles', couleur, onRetour, support }) => {
   const { user } = useAppStore();
   const [onglet, setOnglet] = useState<'demande' | 'validation'>('demande');
   const [nbAValider, setNbAValider] = useState(0);
@@ -52,11 +54,11 @@ const MiseAJourPage: React.FC<MiseAJourPageProps> = ({ titre = 'Mise à jour des
 
   const compterAValider = useCallback(async () => {
     try {
-      setNbAValider((await modificationService.aValider()).data.length);
+      setNbAValider((await modificationService.aValider(support)).data.length);
     } catch {
       /* compteur indicatif */
     }
-  }, []);
+  }, [support]);
 
   useEffect(() => {
     compterAValider();
@@ -132,10 +134,10 @@ const MiseAJourPage: React.FC<MiseAJourPageProps> = ({ titre = 'Mise à jour des
       </Tabs>
 
       {onglet === 'validation' ? (
-        <DemandesAValider onDecision={() => { compterAValider(); if (selection) chargerFiche(selection); }} />
+        <DemandesAValider support={support} onDecision={() => { compterAValider(); if (selection) chargerFiche(selection); }} />
       ) : (
         <>
-          <RechercheTitulaire onSelect={chargerFiche} selectionCle={selection?.cle} />
+          <RechercheTitulaire onSelect={chargerFiche} selectionCle={selection?.cle} support={support} />
 
           {chargement && <Box sx={{ textAlign: 'center', py: 3 }}><CircularProgress /></Box>}
 

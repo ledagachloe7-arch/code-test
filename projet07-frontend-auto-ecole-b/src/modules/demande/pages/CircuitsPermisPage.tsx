@@ -9,6 +9,7 @@ import RenouvellementPage from '../../renouvellement/pages/RenouvellementPage';
 import MiseAJourPage from '../../mise-a-jour/pages/MiseAJourPage';
 import DuplicataPermisRosePage from '../../duplicata/pages/DuplicataPermisRosePage';
 import InformatisationPage from '../../informatisation/pages/InformatisationPage';
+import NouveauPermisRosePage from '../../nouveau-permis/pages/NouveauPermisRosePage';
 
 /**
  * Permis de conduire : circuits Permis rose / Permis vert.
@@ -25,11 +26,13 @@ interface SousCircuit {
    */
   typesDemande?: string[];
   /** Sous-circuit avec son propre écran (hors parcours « Nouvelle demande »). */
-  ecran?: 'renouvellement' | 'mise-a-jour' | 'duplicata-rose' | 'informatisation';
+  ecran?: 'renouvellement' | 'mise-a-jour' | 'duplicata-rose' | 'informatisation' | 'nouveau-permis';
 }
 
 interface Circuit {
   id: 'rose' | 'vert';
+  /** Support transmis aux écrans dédiés : ROSE = permis rose, VERT = fiche d'enregistrement. */
+  support: 'ROSE' | 'VERT';
   libelle: string;
   description: string;
   couleur: string;
@@ -46,12 +49,23 @@ const sousCircuitsCommuns = (
     duplicataEcran?: SousCircuit['ecran'];
     renouvellement?: SousCircuit['ecran'];
     miseAJour?: SousCircuit['ecran'];
+    /**
+     * Digitalisation : parcours « Nouvelle demande » (permis existant retrouvé dans le registre → dossier envoyé
+     * à la biométrie pour la carte numérique), limité à ces types de demande.
+     */
+    digitalisationTypes?: string[];
   } = {},
 ): SousCircuit[] => [
   {
+    id: 'digitalisation',
+    libelle: 'Digitalisation du permis',
+    description: `Carte numérique ${support} : document déjà délivré, envoyé à la biométrie.`,
+    typesDemande: options.digitalisationTypes,
+  },
+  {
     id: 'duplicata',
     libelle: 'Duplicata',
-    description: `Duplicata ${support}.`,
+    description: `Duplicata ${support} (perte, vol, détérioration).`,
     typesDemande: options.duplicataEcran ? undefined : options.duplicataTypes,
     ecran: options.duplicataEcran,
   },
@@ -62,15 +76,29 @@ const sousCircuitsCommuns = (
 const CIRCUITS: Circuit[] = [
   {
     id: 'rose',
+    support: 'ROSE',
     libelle: 'Permis rose',
     description: 'Permis de conduire national',
     couleur: '#c2185b',
     sousCircuits: [
+      {
+        id: 'nouveau-permis',
+        libelle: 'Nouveau permis rose',
+        description: 'Première délivrance : inscription à une formation d’auto-école, examen, biométrie.',
+        ecran: 'nouveau-permis',
+      },
       ...sousCircuitsCommuns('du permis rose', {
+        digitalisationTypes: ['DUPLICATA'],
         duplicataEcran: 'duplicata-rose',
         renouvellement: 'renouvellement',
         miseAJour: 'mise-a-jour',
       }),
+      {
+        // À brancher : parcours de conversion d'un permis militaire en permis civil (règles à valider).
+        id: 'conversion',
+        libelle: 'Conversion',
+        description: 'Conversion d’un permis militaire en permis rose civil.',
+      },
       {
         id: 'informatisation',
         libelle: 'Informatisation permis de conduire',
@@ -81,11 +109,18 @@ const CIRCUITS: Circuit[] = [
   },
   {
     id: 'vert',
+    support: 'VERT',
     libelle: 'Permis vert',
     description: "Fiche d'enregistrement",
     couleur: '#2e7d32',
+    // Mêmes écrans que le permis rose (sans l'informatisation), limités aux fiches d'enregistrement.
     sousCircuits: [
-      ...sousCircuitsCommuns("de la fiche d'enregistrement", { duplicataTypes: ['DUPLICATAFICHEENREGISTREMENT'] }),
+      ...sousCircuitsCommuns("de la fiche d'enregistrement", {
+        digitalisationTypes: ['DUPLICATAFICHEENREGISTREMENT'],
+        duplicataEcran: 'duplicata-rose',
+        renouvellement: 'renouvellement',
+        miseAJour: 'mise-a-jour',
+      }),
       {
         id: 'nouvelle-fiche',
         libelle: "Création d'une nouvelle fiche",
@@ -162,6 +197,17 @@ const CircuitsPermisPage: React.FC = () => {
       <RenouvellementPage
         titre={`${circuit.libelle} — ${sousCircuit.libelle}`}
         couleur={circuit.couleur}
+        support={circuit.support}
+        onRetour={() => setSousCircuit(null)}
+      />
+    );
+  }
+
+  if (circuit && sousCircuit?.ecran === 'nouveau-permis') {
+    return (
+      <NouveauPermisRosePage
+        titre={`${circuit.libelle} — ${sousCircuit.libelle}`}
+        couleur={circuit.couleur}
         onRetour={() => setSousCircuit(null)}
       />
     );
@@ -182,6 +228,7 @@ const CircuitsPermisPage: React.FC = () => {
       <DuplicataPermisRosePage
         titre={`${circuit.libelle} — ${sousCircuit.libelle}`}
         couleur={circuit.couleur}
+        support={circuit.support}
         onRetour={() => setSousCircuit(null)}
       />
     );
@@ -192,6 +239,7 @@ const CircuitsPermisPage: React.FC = () => {
       <MiseAJourPage
         titre={`${circuit.libelle} — ${sousCircuit.libelle}`}
         couleur={circuit.couleur}
+        support={circuit.support}
         onRetour={() => setSousCircuit(null)}
       />
     );

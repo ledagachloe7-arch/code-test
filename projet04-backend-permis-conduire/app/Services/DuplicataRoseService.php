@@ -9,6 +9,7 @@ use App\Models\DuplicataDemande;
 use App\Models\HPermis;
 use App\Models\Referentiel;
 use App\Models\TypeDemande;
+use App\Support\SupportPermis;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -16,11 +17,12 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * Duplicata du permis rose (cadrage v1.0 du 17/11/2026).
+ * Duplicata du permis rose (cadrage v1.0 du 17/11/2026) et de la fiche d'enregistrement (permis vert).
  *
  * - Shortcode : contrôlé côté serveur à partir des codes CNEDDT conservés lors des transferts (cneddt_shortcodes),
  *   rattachés au titulaire par numéro de pièce ou numéro de permis.
- * - Création : nouveau dossier DUPLICATA lié au permis source ; le permis source n'est jamais modifié.
+ * - Création : nouveau dossier lié au permis source (DUPLICATA pour le rose, DUPLICATAFICHEENREGISTREMENT pour la fiche) ;
+ *   le permis source n'est jamais modifié. Une demande ne mélange jamais permis rose et fiche.
  */
 class DuplicataRoseService
 {
@@ -79,7 +81,7 @@ class DuplicataRoseService
 
     public static function estPermisRose(HPermis $p): bool
     {
-        return self::normaliserNumero($p->type_permis) !== 'FICHEENREGISTREMENT';
+        return SupportPermis::de($p) === SupportPermis::ROSE;
     }
 
     /**
@@ -159,8 +161,9 @@ class DuplicataRoseService
     /**
      * @param string[] $hPermisIds Permis sources (une ou plusieurs catégories d'un même titulaire) ; le premier est le permis principal.
      * @param object|null $agent Utilisateur authentifié (id, email, centre_id)
+     * @param string|null $supportAttendu Support de l'écran (ROSE | VERT) : refus si le permis principal est d'un autre support.
      */
-    public function creer(array $hPermisIds, array $data, ?UploadedFile $justificatif, $agent): DuplicataDemande
+    public function creer(array $hPermisIds, array $data, ?UploadedFile $justificatif, $agent, ?string $supportAttendu = null): DuplicataDemande
     {
         $hPermisIds = array_values(array_unique(array_filter(array_map('strval', $hPermisIds))));
         if (count($hPermisIds) === 0) {
@@ -178,14 +181,9 @@ class DuplicataRoseService
             throw new DuplicataException('Un justificatif est obligatoire pour ce motif.', 422);
         }
 
-        $typeDemandeId = TypeDemande::where('name', config('duplicata.type_demande'))->value('id');
-        if (! $typeDemandeId) {
-            throw new DuplicataException('Type de demande DUPLICATA introuvable en base.', 500);
-        }
-
         $cheminFichier = null;
         try {
-            $demande = DB::transaction(function () use ($hPermisIds, $motif, $precision, $data, $justificatif, $agent, $typeDemandeId, &$cheminFichier) {
+            $demande = DB::transaction(function () use ($hPermisIds, $motif, $precision, $data, $justificatif, $agent, $supportAttendu, &$cheminFichier) {
                 // Verrou sur les permis sources : protège contre les doubles clics / soumissions simultanées.
                 $tous = HPermis::whereIn('id', $hPermisIds)->lockForUpdate()->get()->keyBy('id');
                 if ($tous->count() !== count($hPermisIds)) {
@@ -193,10 +191,23 @@ class DuplicataRoseService
                 }
                 $permisSources = collect($hPermisIds)->map(fn ($id) => $tous[$id]);
                 $permis = $permisSources->first(); // permis principal
+                $support = SupportPermis::de($permis);
+
+                if ($supportAttendu !== null && $support !== $supportAttendu) {
+                    throw new DuplicataException(SupportPermis::messageMauvaisCircuit($permis->numero_permis, $support), 422);
+                }
+
+                $nomType = config('duplicata.types_demande')[$support] ?? null;
+                $typeDemandeId = $nomType ? TypeDemande::where('name', $nomType)->value('id') : null;
+                if (! $typeDemandeId) {
+                    throw new DuplicataException("Type de demande {$nomType} introuvable en base.", 500);
+                }
 
                 foreach ($permisSources as $p) {
-                    if (! self::estPermisRose($p)) {
-                        throw new DuplicataException("Le permis {$p->numero_permis} est une fiche d'enregistrement (permis vert) : non éligible au duplicata rose.", 422);
+                    // Une demande ne mélange jamais permis rose et fiche d'enregistrement.
+                    if (SupportPermis::de($p) !== $support) {
+                        throw new DuplicataException("Le permis {$p->numero_permis} n'est pas du même type (" . SupportPermis::libelle(SupportPermis::de($p))
+                            . ') : un duplicata ne mélange pas permis rose et fiche d\'enregistrement.', 422);
                     }
                     // Toutes les catégories doivent appartenir au même titulaire (jamais un homonyme).
                     $memeTitulaire = ! empty($permis->numero_identite)
@@ -235,6 +246,8 @@ class DuplicataRoseService
                     'centre_id' => $centreId,
                     'province_id' => $centreId ? Referentiel::query()->whereKey($centreId)->value('parent_id') : null,
                     'numero_permis' => $permis->numero_permis,
+                    // Fiche d'enregistrement : le transfert CNEDDT envoie aussi le numéro du permis d'origine.
+                    'numero_origine_permis' => $support === SupportPermis::VERT ? $permis->numero_origine_permis : null,
                     'lieu_de_dobtention_du_permis' => $permis->lieu_obtention,
                     'date_de_dobtention_du_permis' => $permis->date_obtention,
                     'date_expiration' => $permis->date_validite,
@@ -253,6 +266,7 @@ class DuplicataRoseService
                 $d = new DuplicataDemande();
                 $d->forceFill([
                     'dossier_id' => $dossier->id,
+                    'support' => $support,
                     'permis_source_id' => $permis->id,
                     'numero_permis_source' => $permis->numero_permis,
                     'numero_identite' => $permis->numero_identite,
@@ -303,8 +317,9 @@ class DuplicataRoseService
             throw $e;
         }
 
-        Log::info('[Duplicata] Demande de duplicata rose créée', [
+        Log::info('[Duplicata] Demande de duplicata créée', [
             'duplicata_id' => $demande->id,
+            'support' => $demande->support,
             'dossier_id' => $demande->dossier_id,
             'permis_source_id' => $demande->permis_source_id,
             'categories' => DB::table('duplicata_demande_permis')->where('duplicata_demande_id', $demande->id)->pluck('categorie')->all(),

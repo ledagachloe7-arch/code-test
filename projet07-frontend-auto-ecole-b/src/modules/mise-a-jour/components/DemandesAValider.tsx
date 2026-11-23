@@ -21,16 +21,19 @@ import {
 } from '@mui/material';
 import toast from 'react-hot-toast';
 import { formatDateHeure } from '../../renouvellement/components/RechercheTitulaire';
+import type { SupportPermis } from '../../renouvellement/services/renouvellement.service';
 import { modificationService, type ModificationDemande } from '../services/modification.service';
 import { ListeCorrections, ouvrirJustificatif } from './HistoriqueModifications';
 
 interface Props {
   /** Appelé après une décision (pour rafraîchir le compteur / la fiche). */
   onDecision?: () => void;
+  /** ROSE = permis rose, VERT = fiche d'enregistrement ; absent = toutes les demandes. */
+  support?: SupportPermis;
 }
 
 /** Demandes soumises à examiner par un responsable habilité : approuver ou rejeter (motif obligatoire). */
-const DemandesAValider: React.FC<Props> = ({ onDecision }) => {
+const DemandesAValider: React.FC<Props> = ({ onDecision, support }) => {
   const [demandes, setDemandes] = useState<ModificationDemande[]>([]);
   const [peutValider, setPeutValider] = useState(false);
   const [chargement, setChargement] = useState(true);
@@ -42,7 +45,7 @@ const DemandesAValider: React.FC<Props> = ({ onDecision }) => {
   const charger = useCallback(async () => {
     setChargement(true);
     try {
-      const res = await modificationService.aValider();
+      const res = await modificationService.aValider(support);
       setDemandes(res.data);
       setPeutValider(res.peut_valider);
     } catch (err) {
@@ -50,7 +53,7 @@ const DemandesAValider: React.FC<Props> = ({ onDecision }) => {
     } finally {
       setChargement(false);
     }
-  }, []);
+  }, [support]);
 
   useEffect(() => {
     charger();

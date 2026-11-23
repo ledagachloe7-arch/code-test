@@ -6,6 +6,7 @@ use App\Exceptions\ModificationException;
 use App\Http\Controllers\Controller;
 use App\Models\ModificationDemande;
 use App\Services\ModificationDemandeService;
+use App\Support\SupportPermis;
 use Dedoc\Scramble\Attributes\Endpoint;
 use Dedoc\Scramble\Attributes\Group;
 use Illuminate\Http\JsonResponse;
@@ -102,14 +103,14 @@ class ModificationDemandeController extends Controller
         }
     }
 
-    #[Endpoint(title: 'Demandes à valider', description: 'Demandes au statut SOUMISE. Chaque demande indique `refus_decision` si l\'agent connecté ne peut pas décider (non habilité, validation renforcée, séparation des tâches).')]
+    #[Endpoint(title: 'Demandes à valider', description: 'Demandes au statut SOUMISE. Query : support (ROSE|VERT, facultatif) pour ne voir que le permis rose ou la fiche d\'enregistrement. Chaque demande indique `refus_decision` si l\'agent connecté ne peut pas décider (non habilité, validation renforcée, séparation des tâches).')]
     public function aValider(Request $request): JsonResponse
     {
         $agent = $this->agent($request);
         return response()->json([
             'success' => true,
             'peut_valider' => $this->service->estValidateur($agent),
-            'data' => $this->service->aValider($agent),
+            'data' => $this->service->aValider($agent, SupportPermis::normaliser($request->query('support'))),
         ]);
     }
 

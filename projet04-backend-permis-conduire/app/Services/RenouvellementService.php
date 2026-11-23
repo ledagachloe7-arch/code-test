@@ -6,6 +6,7 @@ use App\Exceptions\RenouvellementException;
 use App\Models\HPermis;
 use App\Models\Renouvellement;
 use App\Models\RenouvellementCategorie;
+use App\Support\SupportPermis;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -21,6 +22,8 @@ use Illuminate\Support\Str;
  * - Aucune date n'est générée tant que le paiement n'est pas confirmé.
  * - Date de délivrance = date réelle de confirmation du paiement ; expiration calculée par catégorie.
  * - Une confirmation répétée ne crée qu'un seul renouvellement (verrous + index uniques partiels).
+ * - Commun au permis rose et à la fiche d'enregistrement (permis vert) : le support est déduit du permis choisi,
+ *   et seules les lignes du titulaire de ce support sont traitées (SupportPermis).
  */
 class RenouvellementService
 {
@@ -72,8 +75,18 @@ class RenouvellementService
     // Titulaire et état
     // ------------------------------------------------------------------
 
+    /** Frais par catégorie selon le support (la fiche peut avoir son propre tarif, sinon celui du permis rose). */
+    public function montantParCategorie(string $support): float
+    {
+        $montantVert = config('renouvellement.montant_vert');
+        return (float) ($support === SupportPermis::VERT && $montantVert !== null && $montantVert !== ''
+            ? $montantVert
+            : config('renouvellement.montant'));
+    }
+
     /**
-     * Toutes les catégories (lignes h_permis) du titulaire auquel appartient ce permis.
+     * Toutes les catégories (lignes h_permis) du titulaire auquel appartient ce permis, pour le même support
+     * (permis rose ou fiche d'enregistrement).
      */
     public function categoriesDuTitulaire(string $hPermisId, bool $verrouiller = false): Collection
     {
@@ -85,6 +98,7 @@ class RenouvellementService
         $query = HPermis::query();
         if (! empty($permis->numero_identite)) {
             $query->where('numero_identite', $permis->numero_identite);
+            SupportPermis::filtrer($query, SupportPermis::de($permis));
         } else {
             $query->whereKey($permis->id);
         }
@@ -131,11 +145,12 @@ class RenouvellementService
     {
         $lignes = $this->categoriesDuTitulaire($hPermisId);
         $titulaire = $lignes->first();
+        $support = SupportPermis::de($titulaire);
         $aujourdhui = Carbon::today();
 
         $categories = $lignes->map(fn (HPermis $p) => $this->etatCategorie($p, $aujourdhui))->values();
         $aRenouveler = $categories->where('renouvelable', true)->values();
-        $enAttente = $this->renouvellementEnAttente($titulaire->numero_identite);
+        $enAttente = $this->renouvellementEnAttente($titulaire->numero_identite, $support);
 
         if ($enAttente) {
             $message = self::MSG_EN_ATTENTE;
@@ -148,9 +163,10 @@ class RenouvellementService
                 : "Aucune catégorie renouvelable. Contactez l'administration.";
         }
 
-        $montantUnitaire = (float) config('renouvellement.montant');
+        $montantUnitaire = $this->montantParCategorie($support);
 
         return [
+            'support' => $support,
             'titulaire' => [
                 'numero_identite' => $titulaire->numero_identite,
                 'nom' => $titulaire->nom,
@@ -171,13 +187,14 @@ class RenouvellementService
         ];
     }
 
-    public function renouvellementEnAttente(?string $numeroIdentite): ?Renouvellement
+    public function renouvellementEnAttente(?string $numeroIdentite, string $support = SupportPermis::ROSE): ?Renouvellement
     {
         if (empty($numeroIdentite)) {
             return null;
         }
         return Renouvellement::with('categories')
             ->where('numero_identite', $numeroIdentite)
+            ->where('support', $support)
             ->where('statut', Renouvellement::STATUT_EN_ATTENTE)
             ->first();
     }
@@ -187,6 +204,7 @@ class RenouvellementService
         $titulaire = $this->categoriesDuTitulaire($hPermisId)->first();
         return Renouvellement::with('categories')
             ->where('numero_identite', $titulaire->numero_identite)
+            ->where('support', SupportPermis::de($titulaire))
             ->orderByDesc('created_at')
             ->get();
     }
@@ -211,16 +229,18 @@ class RenouvellementService
             throw new RenouvellementException('Le numéro de téléphone est obligatoire pour un paiement Moov.', 422);
         }
 
-        $montantUnitaire = (float) config('renouvellement.montant');
-        if ($montantUnitaire <= 0) {
-            throw new RenouvellementException('Montant du renouvellement non configuré (RENOUVELLEMENT_MONTANT).', 500);
-        }
-
-        $renouvellement = DB::transaction(function () use ($hPermisId, $operateur, $telephone, $agent, $montantUnitaire) {
+        $renouvellement = DB::transaction(function () use ($hPermisId, $operateur, $telephone, $agent) {
             $lignes = $this->categoriesDuTitulaire($hPermisId, true);
             $titulaire = $lignes->first();
+            $support = SupportPermis::de($titulaire);
 
-            if ($this->renouvellementEnAttente($titulaire->numero_identite)) {
+            $montantUnitaire = $this->montantParCategorie($support);
+            if ($montantUnitaire <= 0) {
+                throw new RenouvellementException('Montant du renouvellement non configuré ('
+                    . ($support === SupportPermis::VERT ? 'RENOUVELLEMENT_MONTANT_FICHE ou ' : '') . 'RENOUVELLEMENT_MONTANT).', 500);
+            }
+
+            if ($this->renouvellementEnAttente($titulaire->numero_identite, $support)) {
                 throw new RenouvellementException(self::MSG_EN_ATTENTE, 409);
             }
 
@@ -240,6 +260,7 @@ class RenouvellementService
             $r->forceFill([
                 'numero' => 'RNV-' . now()->format('Ymd') . '-' . strtoupper(Str::random(6)),
                 'numero_identite' => $titulaire->numero_identite,
+                'support' => $support,
                 'nom' => $titulaire->nom,
                 'prenom' => $titulaire->prenom,
                 'date_naissance' => $titulaire->date_naissance,
@@ -269,6 +290,7 @@ class RenouvellementService
         Log::info('[Renouvellement] Demande initiée', [
             'renouvellement_id' => $renouvellement->id,
             'numero_identite' => $renouvellement->numero_identite,
+            'support' => $renouvellement->support,
             'categories' => $renouvellement->categories->pluck('categorie')->all(),
             'operateur' => $operateur,
             'agent_id' => $agent->id ?? null,

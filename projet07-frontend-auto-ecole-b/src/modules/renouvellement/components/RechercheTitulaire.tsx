@@ -18,7 +18,7 @@ import {
   Typography,
 } from '@mui/material';
 import toast from 'react-hot-toast';
-import { renouvellementService, type TitulaireResultat } from '../services/renouvellement.service';
+import { renouvellementService, type SupportPermis, type TitulaireResultat } from '../services/renouvellement.service';
 import SaisieNumeroPermis, { PARTS_VIDES } from '../../duplicata/components/SaisieNumeroPermis';
 import { buildNumeroPermis } from '../../cnepc/forms/utils';
 import type { NumeroPermisParts, PermisFormatType } from '../../cnepc/forms/types';
@@ -35,6 +35,8 @@ interface RechercheTitulaireProps {
   /** Titulaire sélectionné (une ligne par personne, toutes ses catégories rattachées). */
   onSelect: (titulaire: TitulaireResultat) => void;
   selectionCle?: string | null;
+  /** Limite la recherche au permis rose (ROSE) ou aux fiches d'enregistrement (VERT). */
+  support?: SupportPermis;
 }
 
 type Mode = 'numero' | 'identite';
@@ -45,7 +47,7 @@ type Mode = 'numero' | 'identite';
  *   est sélectionné automatiquement avec toutes ses catégories ; les personnes de même nom restent visibles, non sélectionnées ;
  * - par identité (nom, prénom, date de naissance).
  */
-const RechercheTitulaire: React.FC<RechercheTitulaireProps> = ({ onSelect, selectionCle }) => {
+const RechercheTitulaire: React.FC<RechercheTitulaireProps> = ({ onSelect, selectionCle, support }) => {
   const [mode, setMode] = useState<Mode>('numero');
   const [criteres, setCriteres] = useState({ nom: '', prenom: '', date_naissance: '' });
   const [format, setFormat] = useState<PermisFormatType>('standard');
@@ -62,7 +64,7 @@ const RechercheTitulaire: React.FC<RechercheTitulaireProps> = ({ onSelect, selec
     setCleExacte(null);
     try {
       if (mode === 'numero') {
-        const { titulaires, exact } = await renouvellementService.rechercherParNumero(numeroComplet);
+        const { titulaires, exact } = await renouvellementService.rechercherParNumero(numeroComplet, support);
         setResultats(titulaires);
         if (exact) {
           setCleExacte(exact.cle);
@@ -71,7 +73,7 @@ const RechercheTitulaire: React.FC<RechercheTitulaireProps> = ({ onSelect, selec
           onSelect(titulaires[0]);
         }
       } else {
-        const titulaires = await renouvellementService.rechercherTitulaires(criteres);
+        const titulaires = await renouvellementService.rechercherTitulaires(criteres, support);
         setResultats(titulaires);
         if (titulaires.length === 1) onSelect(titulaires[0]);
       }
@@ -148,7 +150,13 @@ const RechercheTitulaire: React.FC<RechercheTitulaireProps> = ({ onSelect, selec
             <TableBody>
               {resultats.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={4} align="center">Aucun titulaire trouvé.</TableCell>
+                  <TableCell colSpan={4} align="center">
+                    {support === 'VERT'
+                      ? "Aucune fiche d'enregistrement trouvée."
+                      : support === 'ROSE'
+                        ? 'Aucun permis rose trouvé.'
+                        : 'Aucun titulaire trouvé.'}
+                  </TableCell>
                 </TableRow>
               )}
               {resultats.map((t) => (

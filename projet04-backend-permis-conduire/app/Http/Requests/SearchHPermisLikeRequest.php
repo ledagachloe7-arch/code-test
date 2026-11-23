@@ -28,6 +28,8 @@ class SearchHPermisLikeRequest extends FormRequest
             'prenom' => 'nullable|string|max:200',
             'date_naissance' => 'nullable|string|max:50',
             'numero_permis' => 'nullable|string|max:200',
+            // Facultatif : ROSE = permis rose seulement, VERT = fiches d'enregistrement seulement.
+            'support' => 'nullable|string|in:ROSE,VERT,rose,vert',
             'page' => 'nullable|integer|min:1',
             'per_page' => 'nullable|integer|min:1|max:100',
         ];

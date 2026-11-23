@@ -1,5 +1,8 @@
 import axiosClient from '../../../shared/utils/axiosConfig';
 
+/** Support du permis : ROSE = permis de conduire national, VERT = fiche d'enregistrement. */
+export type SupportPermis = 'ROSE' | 'VERT';
+
 export type StatutRenouvellement = 'EN_ATTENTE_PAIEMENT' | 'CONFIRME' | 'ECHOUE' | 'ANNULE';
 export type Operateur = 'MOOV' | 'AIRTEL';
 
@@ -68,6 +71,7 @@ export interface EtatCategorie {
 }
 
 export interface EtatRenouvellement {
+  support?: SupportPermis;
   titulaire: {
     numero_identite: string | null;
     nom: string;
@@ -127,17 +131,21 @@ export const renouvellementService = {
    * On ramène alors toutes ses catégories et les personnes portant le même nom (affichées, non sélectionnées).
    * Le titulaire exact est placé en tête et retourné dans `exact`.
    */
-  async rechercherParNumero(numeroSaisi: string): Promise<{ titulaires: TitulaireResultat[]; exact: TitulaireResultat | null }> {
+  async rechercherParNumero(
+    numeroSaisi: string,
+    support?: SupportPermis,
+  ): Promise<{ titulaires: TitulaireResultat[]; exact: TitulaireResultat | null }> {
     const numero = normaliserNumero(numeroSaisi);
     if (!numero) throw new Error('Saisissez le numéro du permis.');
+    const filtre = support ? { support } : {};
     try {
-      const { data } = await axiosClient.get('/h-permis/recherche', { params: { numero_permis: numero, per_page: 100 } });
+      const { data } = await axiosClient.get('/h-permis/recherche', { params: { numero_permis: numero, per_page: 100, ...filtre } });
       let lignes = (data?.data ?? []) as PermisResultat[];
       const ligneExacte = lignes.find((l) => normaliserNumero(l.numero_permis) === numero);
       if (!ligneExacte) return { titulaires: regrouperParTitulaire(lignes), exact: null };
 
       const parNom = await axiosClient.get('/h-permis/recherche', {
-        params: { nom: ligneExacte.nom, ...(ligneExacte.prenom ? { prenom: ligneExacte.prenom } : {}), per_page: 100 },
+        params: { nom: ligneExacte.nom, ...(ligneExacte.prenom ? { prenom: ligneExacte.prenom } : {}), per_page: 100, ...filtre },
       });
       const autres = ((parNom.data?.data ?? []) as PermisResultat[]).filter((l) => !lignes.some((x) => x.id === l.id));
       lignes = [...lignes, ...autres];
@@ -152,7 +160,7 @@ export const renouvellementService = {
     }
   },
 
-  async rechercherTitulaires(criteres: CriteresRecherche): Promise<TitulaireResultat[]> {
+  async rechercherTitulaires(criteres: CriteresRecherche, support?: SupportPermis): Promise<TitulaireResultat[]> {
     const params = Object.fromEntries(
       Object.entries(criteres).filter(([, v]) => typeof v === 'string' && v.trim() !== '').map(([k, v]) => [k, (v as string).trim()]),
     );
@@ -160,7 +168,9 @@ export const renouvellementService = {
       throw new Error('Saisissez au moins un critère : numéro de permis, nom, prénom ou date de naissance.');
     }
     try {
-      const { data } = await axiosClient.get('/h-permis/recherche', { params: { ...params, per_page: 100 } });
+      const { data } = await axiosClient.get('/h-permis/recherche', {
+        params: { ...params, per_page: 100, ...(support ? { support } : {}) },
+      });
       return regrouperParTitulaire((data?.data ?? []) as PermisResultat[]);
     } catch (error) {
       throw new Error(messageErreur(error, 'Erreur lors de la recherche.'));

@@ -1,7 +1,16 @@
 import axiosClient from '../../../shared/utils/axiosConfig';
 
+/** Support du permis : ROSE = permis de conduire national, VERT = fiche d'enregistrement. */
+export type SupportPermis = 'ROSE' | 'VERT';
+
+/** Type de demande du dossier créé, par support. */
+export const TYPES_DEMANDE_DUPLICATA: Record<SupportPermis, string> = {
+  ROSE: 'DUPLICATA',
+  VERT: 'DUPLICATAFICHEENREGISTREMENT',
+};
+
 /** Type métier du duplicata du permis rose (distinct de DUPLICATAFICHEENREGISTREMENT, fiche verte). */
-export const TYPE_DEMANDE_DUPLICATA_ROSE = 'DUPLICATA';
+export const TYPE_DEMANDE_DUPLICATA_ROSE = TYPES_DEMANDE_DUPLICATA.ROSE;
 
 /** Permis tel que retourné par la recherche h_permis (une ligne = un permis / une catégorie). */
 export interface PermisSource {
@@ -21,9 +30,20 @@ export interface PermisSource {
   date_validite: string | null;
 }
 
+/** type_permis normalisés désignant une fiche d'enregistrement (même liste que SupportPermis::TYPES_FICHE côté serveur). */
+const TYPES_FICHE = ['FICHEENREGISTREMENT', 'DUPLICATAFE'];
+
+/** Support d'une ligne du registre : FICHE_ENREGISTREMENT ou DUPLICATA FE (quelle que soit l'écriture) = fiche verte. */
+export const supportDe = (p: Pick<PermisSource, 'type_permis'>): SupportPermis =>
+  TYPES_FICHE.includes(String(p.type_permis ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')) ? 'VERT' : 'ROSE';
+
 /** La fiche d'enregistrement (permis vert) n'est pas éligible au duplicata rose. */
-export const estPermisRose = (p: Pick<PermisSource, 'type_permis'>): boolean =>
-  String(p.type_permis ?? '').toUpperCase().replace(/[^A-Z]/g, '') !== 'FICHEENREGISTREMENT';
+export const estPermisRose = (p: Pick<PermisSource, 'type_permis'>): boolean => supportDe(p) === 'ROSE';
+
+export const LIBELLES_SUPPORT: Record<SupportPermis, string> = {
+  ROSE: 'Permis rose',
+  VERT: "Fiche d'enregistrement",
+};
 
 export type ModeRecherche = 'numero' | 'identite';
 
@@ -65,6 +85,8 @@ export interface ResultatShortcode {
 export interface SaisieDuplicata {
   /** Catégories (lignes h_permis) d'un même titulaire ; la première est le permis principal. */
   permisIds: string[];
+  /** Circuit de l'écran : le serveur refuse un permis d'un autre support. */
+  support?: SupportPermis;
   motif: MotifDuplicata;
   precision: string;
   observations: string;
@@ -127,9 +149,9 @@ export const duplicataService = {
    * Contrôle du shortcode du titulaire, fait par le serveur (codes CNEDDT conservés lors des transferts).
    * Erreur réseau / service indisponible → NON_VERIFIE (jamais considéré comme réussi).
    */
-  async verifierShortcode(permis: PermisSource): Promise<ResultatShortcode> {
+  async verifierShortcode(permis: PermisSource, support?: SupportPermis): Promise<ResultatShortcode> {
     try {
-      const { data } = await axiosClient.get(`/duplicata-rose/permis/${permis.id}/shortcode`);
+      const { data } = await axiosClient.get(`/duplicata-rose/permis/${permis.id}/shortcode`, { params: support ? { support } : {} });
       return { statut: data.statut as StatutShortcode, message: data.message, shortcode: data.shortcode ?? null };
     } catch (error) {
       const e = error as { response?: { data?: { statut?: StatutShortcode; message?: string } } };
@@ -145,6 +167,7 @@ export const duplicataService = {
   async soumettre(saisie: SaisieDuplicata): Promise<DuplicataCree> {
     const fd = new FormData();
     saisie.permisIds.forEach((id) => fd.append('h_permis_ids[]', id));
+    if (saisie.support) fd.append('support', saisie.support);
     fd.append('motif', saisie.motif);
     if (saisie.motif === 'AUTRE') fd.append('motif_precision', saisie.precision);
     if (saisie.observations.trim()) fd.append('observations', saisie.observations.trim());

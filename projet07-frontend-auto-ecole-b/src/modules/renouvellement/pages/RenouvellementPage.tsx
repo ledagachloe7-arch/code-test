@@ -35,6 +35,7 @@ import {
   type Operateur,
   type Renouvellement,
   type StatutRenouvellement,
+  type SupportPermis,
   type TitulaireResultat,
 } from '../services/renouvellement.service';
 import RechercheTitulaire, { formatDate, formatDateHeure } from '../components/RechercheTitulaire';
@@ -54,9 +55,11 @@ interface RenouvellementPageProps {
   couleur?: string;
   /** Retour au choix du sous-circuit (Circuits permis). */
   onRetour?: () => void;
+  /** ROSE = permis rose, VERT = fiche d'enregistrement : limite la recherche à ce support. */
+  support?: SupportPermis;
 }
 
-const RenouvellementPage: React.FC<RenouvellementPageProps> = ({ titre = 'Renouvellement de permis', couleur, onRetour }) => {
+const RenouvellementPage: React.FC<RenouvellementPageProps> = ({ titre = 'Renouvellement de permis', couleur, onRetour, support }) => {
   const [selection, setSelection] = useState<TitulaireResultat | null>(null);
   const [etat, setEtat] = useState<EtatRenouvellement | null>(null);
   const [historique, setHistorique] = useState<Renouvellement[]>([]);
@@ -135,7 +138,7 @@ const RenouvellementPage: React.FC<RenouvellementPageProps> = ({ titre = 'Renouv
         expirées (à partir du lendemain de leur expiration). Les dates sont calculées par le serveur à la confirmation du paiement.
       </Typography>
 
-      <RechercheTitulaire onSelect={chargerEtat} selectionCle={selection?.cle} />
+      <RechercheTitulaire onSelect={chargerEtat} selectionCle={selection?.cle} support={support} />
 
       {chargementEtat && <Box sx={{ textAlign: 'center', py: 3 }}><CircularProgress /></Box>}
 

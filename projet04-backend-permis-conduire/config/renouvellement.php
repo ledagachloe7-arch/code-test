@@ -6,6 +6,12 @@ return [
     | À confirmer par l'administration.
     */
     'montant' => (float) env('RENOUVELLEMENT_MONTANT', 0),
+
+    /*
+    | Frais par catégorie pour la fiche d'enregistrement (permis vert). Vide = même montant que le permis rose.
+    | À confirmer par l'administration. Les durées de validité ci-dessous s'appliquent aux deux supports.
+    */
+    'montant_vert' => env('RENOUVELLEMENT_MONTANT_FICHE'),
     'devise' => env('RENOUVELLEMENT_DEVISE', 'XAF'),
 
     /*
