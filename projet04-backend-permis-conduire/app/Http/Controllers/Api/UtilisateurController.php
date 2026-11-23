@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Support\TaggedCache;
 use App\Http\Controllers\Controller;
 use App\Http\Helpers\AuthHelper;
 use App\Http\Resources\UtilisateurResource;
@@ -50,7 +51,11 @@ class UtilisateurController extends Controller
     public function indexCandidats(Request $request): JsonResponse
     {
         $cacheKey = 'utilisateurs:candidats:' . md5(json_encode($request->all()));
-        $data = Cache::tags(['utilisateurs'])->remember($cacheKey, 3600, function () use ($request) {
+       TaggedCache::remember(
+    ['utilisateurs'],
+    $cacheKey,
+    3600,
+    function () use ($request) {
             $perPage = min(max((int) $request->input('per_page', 15), 1), 100);
 
             $query = Utilisateur::query()
@@ -232,7 +237,7 @@ class UtilisateurController extends Controller
         }
 
         $utilisateur->load(['personne', 'centre']);
-        Cache::tags(['utilisateurs'])->flush();
+        TaggedCache::flush(['utilisateurs']);
 
         return response()->json([
             'success' => true,
