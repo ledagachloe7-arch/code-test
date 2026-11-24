@@ -46,7 +46,8 @@ interface Props {
   fiche: FicheTitulaire;
   /** Brouillon en cours de modification (sinon nouvelle demande). */
   brouillon: ModificationDemande | null;
-  onTermine: () => void;
+  /** Appelé après enregistrement ; reçoit la demande quand elle vient d'être créée (pas pour un brouillon modifié). */
+  onTermine: (demandeCreee?: ModificationDemande) => void;
   onAnnulerBrouillon: () => void;
 }
 
@@ -125,7 +126,7 @@ const FormulaireModification: React.FC<Props> = ({ fiche, brouillon, onTermine, 
         : await modificationService.creer(fiche.h_permis_id, saisie);
       toast.success(res.message);
       reinitialiser();
-      onTermine();
+      onTermine(brouillon ? undefined : res.data);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Impossible d'enregistrer la demande.");
     } finally {

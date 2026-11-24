@@ -656,9 +656,30 @@ export interface NouvelleDemandeePageProps {
   sousTitre?: string;
   /** Bouton retour de l'en-tête (par défaut : Gestion dossier). */
   onRetour?: () => void;
+  /** Numéro de permis déjà connu (guichet usager) : prérempli et vérifié automatiquement à l'ouverture. */
+  numeroPermisInitial?: string;
+  /** Guichet usager : dossier créé → ajouté au paiement groupé. */
+  onDossierCree?: (dossierId: string) => void;
+  /** Guichet usager : identité issue du registre grisée (modification uniquement via « Mise à jour »). */
+  identiteVerrouillee?: boolean;
+  /**
+   * Guichet usager : le dossier est payé par le paiement groupé (pas de mise en attente ni de code propre).
+   * `paiementGroupePaye` passe à true quand la commande est confirmée → transfert à la biométrie disponible.
+   */
+  paiementGroupeActif?: boolean;
+  paiementGroupePaye?: boolean;
 }
 
-const NouvelleDemandeePage: React.FC<NouvelleDemandeePageProps> = ({ typesAutorises, titre, sousTitre, onRetour }) => {
+/** Découpe un numéro de permis connu en cases de saisie (format standard AAAA-P-C-NNNN, sinon format libre). */
+const decomposerNumeroPermis = (numero: string): { format: PermisFormatType; parts: NumeroPermisParts } => {
+  const brut = numero.replace(/[\s-]/g, '').toUpperCase();
+  const m = /^(\d{4})(\d)([A-Z0-9])(\d{4,10})$/.exec(brut);
+  return m
+    ? { format: 'standard', parts: { annee: m[1], province: m[2], categorie: m[3], numero: m[4] } }
+    : { format: 'op', parts: { annee: '', province: '', categorie: '', numero: numero.trim() } };
+};
+
+const NouvelleDemandeePage: React.FC<NouvelleDemandeePageProps> = ({ typesAutorises, titre, sousTitre, onRetour, numeroPermisInitial, onDossierCree, identiteVerrouillee, paiementGroupeActif, paiementGroupePaye }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAppStore();
@@ -682,8 +703,11 @@ const NouvelleDemandeePage: React.FC<NouvelleDemandeePageProps> = ({ typesAutori
 
   // ── Permis verification ───────────────────────────────────────────────────
   const [verificationType, setVerificationType] = useState<'numero' | 'identite'>('numero');
-  const [permisFormat, setPermisFormat] = useState<PermisFormatType>('standard');
-  const [permisParts, setPermisParts]   = useState<NumeroPermisParts>(EMPTY_PARTS);
+  const [permisFormat, setPermisFormat] = useState<PermisFormatType>(() =>
+    numeroPermisInitial ? decomposerNumeroPermis(numeroPermisInitial).format : 'standard');
+  const [permisParts, setPermisParts]   = useState<NumeroPermisParts>(() =>
+    numeroPermisInitial ? decomposerNumeroPermis(numeroPermisInitial).parts : EMPTY_PARTS);
+  const verificationInitialeFaite = useRef(false);
   const [identityForm, setIdentityForm] = useState({ nom: '', prenom: '', dateNaissance: '' });
   const [verifyingPermis, setVerifyingPermis] = useState(false);
   const [permisVerified, setPermisVerified]   = useState(false);
@@ -1324,6 +1348,25 @@ const NouvelleDemandeePage: React.FC<NouvelleDemandeePageProps> = ({ typesAutori
     if (p.numero_identite) dispatch({ type: 'SET_CANDIDAT_FIELD', field: 'numero_piece', value: p.numero_identite });
   }, [permisIdentitySource]); // eslint-disable-line
 
+  /**
+   * Guichet usager : l'identité reprise du registre des permis est en lecture seule (grisée).
+   * Toute correction passe par le circuit « Mise à jour » (demande motivée + validation).
+   * Seuls les champs effectivement fournis par le registre sont verrouillés ; les autres restent à saisir.
+   */
+  const champsIdentiteVerrouilles = useMemo(() => {
+    const p = permisIdentitySource;
+    const s = new Set<string>();
+    if (!identiteVerrouillee || !p) return s;
+    if (p.nom) s.add('nom');
+    if (p.prenom) s.add('prenom');
+    if (p.date_naissance) s.add('date_naissance');
+    if (p.lieu_naissance) s.add('lieu_naissance');
+    if (p.nationalite) s.add('nationalite');
+    // Pièce d'identité (type + numéro) : laissée modifiable à la demande de l'utilisateur.
+    return s;
+  }, [identiteVerrouillee, permisIdentitySource]);
+  const verrou = (champ: string) => champsIdentiteVerrouilles.has(champ);
+
   // ── candidat search debounce ──────────────────────────────────────────────
   const handleCandidatSearch = useCallback((term: string) => {
     if (searchRef.current) clearTimeout(searchRef.current);
@@ -1419,6 +1462,13 @@ const NouvelleDemandeePage: React.FC<NouvelleDemandeePageProps> = ({ typesAutori
     } catch (err) { setPermisError(err instanceof Error ? err.message : 'Erreur de vérification.'); }
     finally { setVerifyingPermis(false); }
   }, [numPermisComplet]);
+
+  // Guichet usager : le permis est déjà identifié, on lance la vérification une seule fois à l'ouverture.
+  useEffect(() => {
+    if (!numeroPermisInitial || verificationInitialeFaite.current || !numPermisComplet) return;
+    verificationInitialeFaite.current = true;
+    void handleVerifyPermisNumero();
+  }, [numeroPermisInitial, numPermisComplet, handleVerifyPermisNumero]);
 
   const handleVerifyPermisIdentite = useCallback(async () => {
     if (!identityForm.nom && !identityForm.prenom && !identityForm.dateNaissance) return;
@@ -1888,6 +1938,7 @@ const NouvelleDemandeePage: React.FC<NouvelleDemandeePageProps> = ({ typesAutori
         const { dossierId } = await demandeService.submitDemande(payloadState);
         setSubmitSuccess(`Dossier créé avec succès${dossierId ? ` (ID : ${dossierId})` : ''}.`);
         setCreatedDossierId(dossierId || '');
+        if (dossierId) onDossierCree?.(dossierId);
       }
     } catch (err) {
       setSubmitError(
@@ -2070,6 +2121,14 @@ const NouvelleDemandeePage: React.FC<NouvelleDemandeePageProps> = ({ typesAutori
       setSettingAttentePaiement(false);
     }
   }, [createdDossierId, paiementEtapeCircuit]);
+
+  // Guichet usager : paiement groupé confirmé = paiement du dossier vérifié → bouton « Transférer à la biométrie ».
+  useEffect(() => {
+    if (paiementGroupeActif && paiementGroupePaye && createdDossierId) {
+      setPaiementVerifie(true);
+      setPaiementFeedback('Paiement groupé confirmé. Vous pouvez transférer le dossier à la biométrie.');
+    }
+  }, [paiementGroupeActif, paiementGroupePaye, createdDossierId]);
 
   const canBypassVerifPaiementDev =
     String(user?.email ?? '')
@@ -3484,6 +3543,12 @@ const NouvelleDemandeePage: React.FC<NouvelleDemandeePageProps> = ({ typesAutori
                   Les champs ont été pré-remplis depuis les données d&apos;un permis trouvé en base (recherche API), et non depuis le permis principal éventuellement saisi manuellement.
                 </Alert>
               )}
+              {champsIdentiteVerrouilles.size > 0 && (
+                <Alert severity="warning" sx={{ mb: 2 }}>
+                  Les informations grisées viennent du registre des permis et ne peuvent pas être modifiées ici.
+                  Pour les corriger, utilisez l’onglet « Mise à jour » (demande motivée, validée par un responsable).
+                </Alert>
+              )}
               <Typography variant="subtitle2" fontWeight={600} mb={1.5} color="text.secondary">Informations personnelles</Typography>
               <Grid container spacing={2} mb={2}>
                 {([
@@ -3495,6 +3560,7 @@ const NouvelleDemandeePage: React.FC<NouvelleDemandeePageProps> = ({ typesAutori
                 ] as { field: keyof typeof state.personne; label: string; required?: boolean; type?: string }[]).map(({ field, label, required, type }) => (
                   <Grid item xs={12} sm={6} key={field}>
                     <TextField label={label} required={required} size="small" fullWidth type={type}
+                      disabled={verrou(field)}
                       value={state.personne[field]}
                       onChange={(e) => dispatch({ type: 'SET_PERSONNE', field, value: e.target.value })} />
                   </Grid>
@@ -3519,11 +3585,12 @@ const NouvelleDemandeePage: React.FC<NouvelleDemandeePageProps> = ({ typesAutori
               <Grid container spacing={2}>
                 <Grid item xs={12} sm={6}>
                   <TextField label="Date de naissance" type="date" required size="small" fullWidth InputLabelProps={{ shrink: true }}
+                    disabled={verrou('date_naissance')}
                     value={state.candidat.date_naissance}
                     onChange={(e) => dispatch({ type: 'SET_CANDIDAT_FIELD', field: 'date_naissance', value: e.target.value })} />
                 </Grid>
                 <Grid item xs={12} sm={6}>
-                  <TextField label="Lieu de naissance" size="small" fullWidth
+                  <TextField label="Lieu de naissance" size="small" fullWidth disabled={verrou('lieu_naissance')}
                     value={state.candidat.lieu_naissance}
                     onChange={(e) => dispatch({ type: 'SET_CANDIDAT_FIELD', field: 'lieu_naissance', value: e.target.value })} />
                 </Grid>
@@ -3535,17 +3602,17 @@ const NouvelleDemandeePage: React.FC<NouvelleDemandeePageProps> = ({ typesAutori
                   </TextField>
                 </Grid>
                 <Grid item xs={12} sm={6}>
-                  <TextField label="Nationalité" size="small" fullWidth value={state.candidat.nationalite}
+                  <TextField label="Nationalité" size="small" fullWidth disabled={verrou('nationalite')} value={state.candidat.nationalite}
                     onChange={(e) => dispatch({ type: 'SET_CANDIDAT_FIELD', field: 'nationalite', value: e.target.value })} />
                 </Grid>
                 <Grid item xs={12} sm={6}>
-                  <TextField select label="Type de pièce" size="small" fullWidth value={state.candidat.type_piece}
+                  <TextField select label="Type de pièce" size="small" fullWidth disabled={verrou('type_piece')} value={state.candidat.type_piece}
                     onChange={(e) => dispatch({ type: 'SET_CANDIDAT_FIELD', field: 'type_piece', value: e.target.value })}>
                     {['CNI', 'Passeport', 'Titre de séjour', 'Autre'].map((t) => <MenuItem key={t} value={t}>{t}</MenuItem>)}
                   </TextField>
                 </Grid>
                 <Grid item xs={12} sm={6}>
-                  <TextField label="Numéro de pièce" size="small" fullWidth value={state.candidat.numero_piece}
+                  <TextField label="Numéro de pièce" size="small" fullWidth disabled={verrou('numero_piece')} value={state.candidat.numero_piece}
                     onChange={(e) => dispatch({ type: 'SET_CANDIDAT_FIELD', field: 'numero_piece', value: e.target.value })} />
                 </Grid>
                 <Grid item xs={12} sm={6}>
@@ -3689,7 +3756,9 @@ const NouvelleDemandeePage: React.FC<NouvelleDemandeePageProps> = ({ typesAutori
                 </Paper>
                 {!createdDossierId && (
                   <Alert severity="info" sx={{ mb: 1 }}>
-                    Créez le dossier pour pouvoir passer le statut en « en attente de paiement » et récupérer le code éventuellement généré.
+                    {paiementGroupeActif
+                      ? 'Créez le dossier : il s’ajoute au paiement groupé du guichet (en bas de page).'
+                      : 'Créez le dossier pour pouvoir passer le statut en « en attente de paiement » et récupérer le code éventuellement généré.'}
                   </Alert>
                 )}
                 {createdDossierId && (
@@ -3705,7 +3774,15 @@ const NouvelleDemandeePage: React.FC<NouvelleDemandeePageProps> = ({ typesAutori
                       </Typography>
                     )}
 
-                    {canBypassVerifPaiementDev && !paiementVerifie && (
+                    {paiementGroupeActif && !paiementVerifie && (
+                      <Alert severity="info" sx={{ mb: 1.5 }}>
+                        Pas de mise en attente ni de code ici : ce dossier est payé avec le <strong>paiement groupé</strong>{' '}
+                        du guichet (en bas de page). Dès que le paiement est confirmé, le bouton{' '}
+                        « Transférer à la biométrie » apparaît ici.
+                      </Alert>
+                    )}
+
+                    {!paiementGroupeActif && canBypassVerifPaiementDev && !paiementVerifie && (
                       <Alert
                         severity="warning"
                         sx={{ mb: 1.5 }}
@@ -3813,7 +3890,7 @@ const NouvelleDemandeePage: React.FC<NouvelleDemandeePageProps> = ({ typesAutori
                       </Alert>
                     )}
 
-                    {!paiementVerifie && isDossierPaymentPhase && (
+                    {!paiementGroupeActif && !paiementVerifie && isDossierPaymentPhase && (
                       <Box sx={{ mt: 1, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
                         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                           Saisissez le code de paiement et vérifiez (même action que dans l’accordéon d’étape réception).
@@ -3842,7 +3919,7 @@ const NouvelleDemandeePage: React.FC<NouvelleDemandeePageProps> = ({ typesAutori
                       </Box>
                     )}
 
-                    {!paiementVerifie && !isDossierPaymentPhase && (
+                    {!paiementGroupeActif && !paiementVerifie && !isDossierPaymentPhase && (
                       <>
                         <Button
                           variant="contained"

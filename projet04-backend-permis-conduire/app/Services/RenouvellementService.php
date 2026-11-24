@@ -229,6 +229,42 @@ class RenouvellementService
             throw new RenouvellementException('Le numéro de téléphone est obligatoire pour un paiement Moov.', 422);
         }
 
+        $renouvellement = $this->creerDemande($hPermisId, $operateur, $telephone, $agent);
+
+        $paiement = ['success' => true, 'message' => 'Demande enregistrée. Paiement en attente.'];
+
+        if ($operateur === Renouvellement::OPERATEUR_MOOV) {
+            $paiement = $this->moovService->envoyerInitTrans(
+                'R_' . $renouvellement->id,
+                trim((string) $telephone),
+                (float) $renouvellement->montant,
+                (string) config('renouvellement.devise'),
+                (string) $renouvellement->id,
+                (string) $renouvellement->code_paiement
+            );
+            unset($paiement['raw']);
+
+            if (! $paiement['success']) {
+                $this->echouer($renouvellement->id, 'Échec initiation Moov : ' . ($paiement['message'] ?? ''));
+                $renouvellement->refresh()->load('categories');
+            }
+        } else {
+            $paiement['message'] = 'Demande enregistrée. Le titulaire doit payer via Airtel Money avec le code '
+                . $renouvellement->code_paiement . '.';
+        }
+
+        return ['renouvellement' => $renouvellement, 'paiement' => $paiement];
+    }
+
+    /**
+     * Enregistre la demande (statut EN_ATTENTE_PAIEMENT) pour toutes les catégories expirées du titulaire,
+     * sans déclencher de paiement. Utilisé seul par initier(), ou par le paiement groupé du guichet
+     * (CommandeGuichetService), qui paie plusieurs actions avec un seul code.
+     *
+     * @param object|null $agent Utilisateur authentifié (id, email)
+     */
+    public function creerDemande(string $hPermisId, string $operateur, ?string $telephone, $agent): Renouvellement
+    {
         $renouvellement = DB::transaction(function () use ($hPermisId, $operateur, $telephone, $agent) {
             $lignes = $this->categoriesDuTitulaire($hPermisId, true);
             $titulaire = $lignes->first();
@@ -296,29 +332,7 @@ class RenouvellementService
             'agent_id' => $agent->id ?? null,
         ]);
 
-        $paiement = ['success' => true, 'message' => 'Demande enregistrée. Paiement en attente.'];
-
-        if ($operateur === Renouvellement::OPERATEUR_MOOV) {
-            $paiement = $this->moovService->envoyerInitTrans(
-                'R_' . $renouvellement->id,
-                trim((string) $telephone),
-                (float) $renouvellement->montant,
-                (string) config('renouvellement.devise'),
-                (string) $renouvellement->id,
-                (string) $renouvellement->code_paiement
-            );
-            unset($paiement['raw']);
-
-            if (! $paiement['success']) {
-                $this->echouer($renouvellement->id, 'Échec initiation Moov : ' . ($paiement['message'] ?? ''));
-                $renouvellement->refresh()->load('categories');
-            }
-        } else {
-            $paiement['message'] = 'Demande enregistrée. Le titulaire doit payer via Airtel Money avec le code '
-                . $renouvellement->code_paiement . '.';
-        }
-
-        return ['renouvellement' => $renouvellement, 'paiement' => $paiement];
+        return $renouvellement;
     }
 
     // ------------------------------------------------------------------
@@ -454,6 +468,10 @@ class RenouvellementService
         if ($r->statut !== Renouvellement::STATUT_EN_ATTENTE || $r->operateur !== Renouvellement::OPERATEUR_AIRTEL) {
             return $r->load('categories');
         }
+        // Payé par une commande du guichet : seul le code de la commande fait foi.
+        if (DB::table('commande_guichet_lignes')->where('type', 'RENOUVELLEMENT')->where('objet_id', $r->id)->exists()) {
+            return $r->load('categories');
+        }
 
         $result = (config('services.paynala.simulation') && app()->environment('local'))
             ? ['success' => true, 'count' => 1, 'data' => ['payments' => [['status' => 'SUCCESS', 'airtel_money_id' => 'SIMULATION-' . $r->id]]]]
@@ -471,6 +489,10 @@ class RenouvellementService
     {
         Renouvellement::where('statut', Renouvellement::STATUT_EN_ATTENTE)
             ->where('operateur', Renouvellement::OPERATEUR_AIRTEL)
+            // Payés par une commande du guichet : vérifiés avec le code de la commande (CommandeGuichetService).
+            ->whereNotExists(fn ($q) => $q->from('commande_guichet_lignes')
+                ->whereColumn('commande_guichet_lignes.objet_id', 'renouvellements.id')
+                ->where('commande_guichet_lignes.type', 'RENOUVELLEMENT'))
             ->orderBy('created_at')
             ->each(function (Renouvellement $r) {
                 try {

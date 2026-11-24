@@ -10,6 +10,7 @@ import MiseAJourPage from '../../mise-a-jour/pages/MiseAJourPage';
 import DuplicataPermisRosePage from '../../duplicata/pages/DuplicataPermisRosePage';
 import InformatisationPage from '../../informatisation/pages/InformatisationPage';
 import NouveauPermisRosePage from '../../nouveau-permis/pages/NouveauPermisRosePage';
+import GuichetUsagerPage from './GuichetUsagerPage';
 
 /**
  * Permis de conduire : circuits Permis rose / Permis vert.
@@ -26,7 +27,7 @@ interface SousCircuit {
    */
   typesDemande?: string[];
   /** Sous-circuit avec son propre écran (hors parcours « Nouvelle demande »). */
-  ecran?: 'renouvellement' | 'mise-a-jour' | 'duplicata-rose' | 'informatisation' | 'nouveau-permis';
+  ecran?: 'renouvellement' | 'mise-a-jour' | 'duplicata-rose' | 'informatisation' | 'nouveau-permis' | 'guichet';
 }
 
 interface Circuit {
@@ -59,8 +60,10 @@ const sousCircuitsCommuns = (
   {
     id: 'digitalisation',
     libelle: 'Digitalisation du permis',
-    description: `Carte numérique ${support} : document déjà délivré, envoyé à la biométrie.`,
+    description: `Guichet usager : fiche complète, puis digitaliser, renouveler, mettre à jour… ${support}.`,
+    // Guichet : recherche de l'usager puis choix de l'action (onglets). typesDemande = types de la digitalisation.
     typesDemande: options.digitalisationTypes,
+    ecran: options.digitalisationTypes ? 'guichet' : undefined,
   },
   {
     id: 'duplicata',
@@ -198,6 +201,19 @@ const CircuitsPermisPage: React.FC = () => {
         titre={`${circuit.libelle} — ${sousCircuit.libelle}`}
         couleur={circuit.couleur}
         support={circuit.support}
+        onRetour={() => setSousCircuit(null)}
+      />
+    );
+  }
+
+  if (circuit && sousCircuit?.ecran === 'guichet') {
+    return (
+      <GuichetUsagerPage
+        key={circuit.id}
+        titre={`${circuit.libelle} — ${sousCircuit.libelle}`}
+        couleur={circuit.couleur}
+        support={circuit.support}
+        typesDigitalisation={sousCircuit.typesDemande ?? []}
         onRetour={() => setSousCircuit(null)}
       />
     );

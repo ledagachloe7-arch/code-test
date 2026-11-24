@@ -30,6 +30,9 @@ class PaiementAirtelCallbackController extends Controller
         // Renouvellements Airtel en attente : vérification Paynala (idempotente).
         $renouvellementService->verifierPaiementsAirtelEnAttente();
 
+        // Paiements groupés du guichet usager en attente (idempotent).
+        app(\App\Services\CommandeGuichetService::class)->verifierPaiementsAirtelEnAttente();
+
         return response()->json([
             'success' => true,
             'message' => 'Callback Airtel traité. Dossiers en attente de paiement vérifiés.',

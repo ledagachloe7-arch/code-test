@@ -308,6 +308,11 @@ Route::middleware(['auth.token'])->group(function () {
     Route::post('/renouvellements/permis/{hPermisId}/initier', [RenouvellementController::class, 'initier'])->name('renouvellements.initier');
     Route::get('/renouvellements/{id}', [RenouvellementController::class, 'show'])->name('renouvellements.show');
 
+    // Guichet usager : paiement groupé (renouvellement + digitalisation + mise à jour, un seul code)
+    Route::post('/guichet/devis', [\App\Http\Controllers\Api\CommandeGuichetController::class, 'devis'])->name('guichet.devis');
+    Route::post('/guichet/commandes', [\App\Http\Controllers\Api\CommandeGuichetController::class, 'store'])->name('guichet.commandes.store');
+    Route::get('/guichet/commandes/{id}', [\App\Http\Controllers\Api\CommandeGuichetController::class, 'show'])->name('guichet.commandes.show');
+
     // Mise à jour des informations personnelles (demande → validation par un responsable habilité)
     Route::get('/modifications/a-valider', [ModificationDemandeController::class, 'aValider'])->name('modifications.a-valider');
     Route::get('/modifications/titulaire/{hPermisId}', [ModificationDemandeController::class, 'fiche'])->name('modifications.fiche');

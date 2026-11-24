@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   Box,
@@ -57,9 +57,15 @@ interface RenouvellementPageProps {
   onRetour?: () => void;
   /** ROSE = permis rose, VERT = fiche d'enregistrement : limite la recherche à ce support. */
   support?: SupportPermis;
+  /** Titulaire déjà identifié (guichet usager) : sa fiche est chargée directement, sans recherche. */
+  titulaireInitial?: TitulaireResultat;
+  /** Guichet usager : le bouton ajoute le renouvellement au paiement groupé au lieu de payer tout de suite. */
+  onAjouterAuPaiement?: () => void;
+  /** Déjà ajouté au paiement groupé. */
+  dansPaiement?: boolean;
 }
 
-const RenouvellementPage: React.FC<RenouvellementPageProps> = ({ titre = 'Renouvellement de permis', couleur, onRetour, support }) => {
+const RenouvellementPage: React.FC<RenouvellementPageProps> = ({ titre = 'Renouvellement de permis', couleur, onRetour, support, titulaireInitial, onAjouterAuPaiement, dansPaiement }) => {
   const [selection, setSelection] = useState<TitulaireResultat | null>(null);
   const [etat, setEtat] = useState<EtatRenouvellement | null>(null);
   const [historique, setHistorique] = useState<Renouvellement[]>([]);
@@ -85,6 +91,10 @@ const RenouvellementPage: React.FC<RenouvellementPageProps> = ({ titre = 'Renouv
       setChargementEtat(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (titulaireInitial) void chargerEtat(titulaireInitial);
+  }, [titulaireInitial, chargerEtat]);
 
   const initier = async () => {
     if (!selection) return;
@@ -138,7 +148,7 @@ const RenouvellementPage: React.FC<RenouvellementPageProps> = ({ titre = 'Renouv
         expirées (à partir du lendemain de leur expiration). Les dates sont calculées par le serveur à la confirmation du paiement.
       </Typography>
 
-      <RechercheTitulaire onSelect={chargerEtat} selectionCle={selection?.cle} support={support} />
+      {!titulaireInitial && <RechercheTitulaire onSelect={chargerEtat} selectionCle={selection?.cle} support={support} />}
 
       {chargementEtat && <Box sx={{ textAlign: 'center', py: 3 }}><CircularProgress /></Box>}
 
@@ -159,9 +169,17 @@ const RenouvellementPage: React.FC<RenouvellementPageProps> = ({ titre = 'Renouv
             </Box>
             <Tooltip title={etat.renouvelable ? '' : etat.message}>
               <span>
-                <Button variant="contained" disabled={!etat.renouvelable} onClick={() => setDialogOuvert(true)}>
-                  {nbARenouveler > 0 ? `Renouvellement (${nbARenouveler} catégorie${nbARenouveler > 1 ? 's' : ''})` : 'Renouvellement'}
-                </Button>
+                {onAjouterAuPaiement ? (
+                  <Button variant="contained" color="success" disabled={!etat.renouvelable || dansPaiement || Boolean(enAttente)} onClick={onAjouterAuPaiement}>
+                    {dansPaiement
+                      ? 'Ajouté au paiement groupé ✓'
+                      : `Ajouter au paiement groupé (${etat.montant_total.toLocaleString('fr-FR')} ${etat.devise})`}
+                  </Button>
+                ) : (
+                  <Button variant="contained" disabled={!etat.renouvelable} onClick={() => setDialogOuvert(true)}>
+                    {nbARenouveler > 0 ? `Renouvellement (${nbARenouveler} catégorie${nbARenouveler > 1 ? 's' : ''})` : 'Renouvellement'}
+                  </Button>
+                )}
               </span>
             </Tooltip>
           </Stack>

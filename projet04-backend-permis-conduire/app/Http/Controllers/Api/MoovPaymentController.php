@@ -138,6 +138,25 @@ class MoovPaymentController extends Controller
             return response()->json(['ack' => true], 200);
         }
 
+        // Paiement groupé du guichet usager (G_{commande_id}).
+        if (str_starts_with($originatorId, 'G_')) {
+            $commandeId = substr($originatorId, 2);
+            try {
+                $guichet = app(\App\Services\CommandeGuichetService::class);
+                if ($resultCode === '0') {
+                    $guichet->confirmerPaiement($commandeId, $transactionId ?: null);
+                } else {
+                    $guichet->echouer($commandeId, 'Moov ' . $resultCode . ' : ' . ($parsed['result_desc'] ?? ''));
+                }
+            } catch (\Throwable $e) {
+                Log::error('[MoovPayment] Erreur traitement callback guichet', [
+                    'commande_id' => $commandeId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+            return response()->json(['ack' => true], 200);
+        }
+
         if (empty($originatorId) || !str_starts_with($originatorId, 'P_')) {
             Log::warning('[MoovPayment] Callback sans OriginatorConversationID valide');
             return response()->json(['ack' => true], 200);

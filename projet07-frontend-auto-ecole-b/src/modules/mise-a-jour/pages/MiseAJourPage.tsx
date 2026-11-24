@@ -29,6 +29,10 @@ interface MiseAJourPageProps {
   onRetour?: () => void;
   /** ROSE = permis rose, VERT = fiche d'enregistrement : recherche et demandes à valider limitées à ce support. */
   support?: SupportPermis;
+  /** Titulaire déjà identifié (guichet usager) : sa fiche est chargée directement, sans recherche. */
+  titulaireInitial?: TitulaireResultat;
+  /** Guichet usager : demande créée → ajoutée au paiement groupé. */
+  onDemandeCreee?: (demande: ModificationDemande) => void;
 }
 
 const Info: React.FC<{ label: string; valeur: React.ReactNode }> = ({ label, valeur }) => (
@@ -42,7 +46,7 @@ const Info: React.FC<{ label: string; valeur: React.ReactNode }> = ({ label, val
  * Mise à jour des informations personnelles : l'agent soumet une demande (champ, nouvelle valeur, motif, justificatif) ;
  * un responsable habilité, distinct du demandeur, l'approuve ou la rejette.
  */
-const MiseAJourPage: React.FC<MiseAJourPageProps> = ({ titre = 'Mise à jour des informations personnelles', couleur, onRetour, support }) => {
+const MiseAJourPage: React.FC<MiseAJourPageProps> = ({ titre = 'Mise à jour des informations personnelles', couleur, onRetour, support, titulaireInitial, onDemandeCreee }) => {
   const { user } = useAppStore();
   const [onglet, setOnglet] = useState<'demande' | 'validation'>('demande');
   const [nbAValider, setNbAValider] = useState(0);
@@ -77,6 +81,10 @@ const MiseAJourPage: React.FC<MiseAJourPageProps> = ({ titre = 'Mise à jour des
       setChargement(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (titulaireInitial) void chargerFiche(titulaireInitial);
+  }, [titulaireInitial, chargerFiche]);
 
   const rafraichir = async () => {
     setBrouillon(null);
@@ -137,7 +145,7 @@ const MiseAJourPage: React.FC<MiseAJourPageProps> = ({ titre = 'Mise à jour des
         <DemandesAValider support={support} onDecision={() => { compterAValider(); if (selection) chargerFiche(selection); }} />
       ) : (
         <>
-          <RechercheTitulaire onSelect={chargerFiche} selectionCle={selection?.cle} support={support} />
+          {!titulaireInitial && <RechercheTitulaire onSelect={chargerFiche} selectionCle={selection?.cle} support={support} />}
 
           {chargement && <Box sx={{ textAlign: 'center', py: 3 }}><CircularProgress /></Box>}
 
@@ -166,7 +174,10 @@ const MiseAJourPage: React.FC<MiseAJourPageProps> = ({ titre = 'Mise à jour des
               <FormulaireModification
                 fiche={fiche}
                 brouillon={brouillon}
-                onTermine={rafraichir}
+                onTermine={(d) => {
+                  if (d) onDemandeCreee?.(d);
+                  void rafraichir();
+                }}
                 onAnnulerBrouillon={() => setBrouillon(null)}
               />
 
