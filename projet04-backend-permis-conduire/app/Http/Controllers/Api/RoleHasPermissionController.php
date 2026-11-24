@@ -13,7 +13,7 @@ use Dedoc\Scramble\Attributes\QueryParameter;
 use Dedoc\Scramble\Attributes\Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
+use App\Support\TaggedCache;
 
 #[Group('Rôles et Permissions', description: 'Gestion des rôles et de leurs permissions (table role_has_permissions)')]
 class RoleHasPermissionController extends Controller
@@ -25,8 +25,7 @@ class RoleHasPermissionController extends Controller
     public function index(Request $request): JsonResponse
     {
         $cacheKey = 'role_has_permissions:' . md5(json_encode($request->all()));
-        $data = Cache::tags(['role_has_permissions'])->remember($cacheKey, 3600, function () use ($request) {
-            $paginator = RoleHasPermission::orderBy('role')->paginate($this->perPage($request));
+$data = TaggedCache::remember(['role_has_permissions'], $cacheKey, 3600, function () use ($request) {            $paginator = RoleHasPermission::orderBy('role')->paginate($this->perPage($request));
             return [
                 'data' => $paginator->items(),
                 'meta' => [
@@ -52,8 +51,7 @@ class RoleHasPermissionController extends Controller
     #[Response(status: 404, description: 'Rôle non trouvé', type: 'array{success: bool, message: string}')]
     public function showByRole(string $role): JsonResponse
     {
-        $item = Cache::tags(['role_has_permissions'])->remember("role_has_permissions:by_role:{$role}", 3600, function () use ($role) {
-            return RoleHasPermission::where('role', $role)->first();
+$item = TaggedCache::remember(['role_has_permissions'], "role_has_permissions:by_role:{$role}", 3600, function () use ($role) {            return RoleHasPermission::where('role', $role)->first();
         });
 
         if (!$item) {
@@ -88,8 +86,7 @@ class RoleHasPermissionController extends Controller
     public function store(StoreRoleHasPermissionRequest $request): JsonResponse
     {
         $item = RoleHasPermission::create($request->validated());
-        Cache::tags(['role_has_permissions'])->flush();
-        return response()->json([
+TaggedCache::flush(['role_has_permissions']);        return response()->json([
             'success' => true,
             'message' => 'Rôle et permissions créés avec succès.',
             'data' => $item,
@@ -104,8 +101,7 @@ class RoleHasPermissionController extends Controller
     public function update(UpdateRoleHasPermissionRequest $request, RoleHasPermission $role_has_permission): JsonResponse
     {
         $role_has_permission->update($request->validated());
-        Cache::tags(['role_has_permissions'])->flush();
-        return response()->json([
+TaggedCache::flush(['role_has_permissions']);        return response()->json([
             'success' => true,
             'message' => 'Rôle et permissions mis à jour avec succès.',
             'data' => $role_has_permission->fresh(),
@@ -119,8 +115,7 @@ class RoleHasPermissionController extends Controller
     public function destroy(RoleHasPermission $role_has_permission): JsonResponse
     {
         $role_has_permission->delete();
-        Cache::tags(['role_has_permissions'])->flush();
-        return response()->json([
+TaggedCache::flush(['role_has_permissions']);        return response()->json([
             'success' => true,
             'message' => 'Rôle et permissions supprimés avec succès.',
         ]);

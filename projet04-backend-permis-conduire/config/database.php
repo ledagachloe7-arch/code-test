@@ -1,3 +1,4 @@
+
 <?php
 
 use Illuminate\Support\Str;
@@ -20,6 +21,12 @@ return [
 
     'connections' => [
 
+        /*
+        |--------------------------------------------------------------------------
+        | SQLite
+        |--------------------------------------------------------------------------
+        */
+
         'sqlite' => [
             'driver' => 'sqlite',
             'url' => env('DB_URL'),
@@ -31,6 +38,12 @@ return [
             'synchronous' => null,
             'transaction_mode' => 'DEFERRED',
         ],
+
+        /*
+        |--------------------------------------------------------------------------
+        | MySQL
+        |--------------------------------------------------------------------------
+        */
 
         'mysql' => [
             'driver' => 'mysql',
@@ -48,9 +61,18 @@ return [
             'strict' => true,
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
-                (defined('\Pdo\Mysql::ATTR_SSL_CA') ? \Pdo\Mysql::ATTR_SSL_CA : PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
+                (defined('\Pdo\Mysql::ATTR_SSL_CA')
+                    ? \Pdo\Mysql::ATTR_SSL_CA
+                    : PDO::MYSQL_ATTR_SSL_CA
+                ) => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
         ],
+
+        /*
+        |--------------------------------------------------------------------------
+        | MariaDB
+        |--------------------------------------------------------------------------
+        */
 
         'mariadb' => [
             'driver' => 'mariadb',
@@ -68,13 +90,17 @@ return [
             'strict' => true,
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
-                (defined('\Pdo\Mysql::ATTR_SSL_CA') ? \Pdo\Mysql::ATTR_SSL_CA : PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
+                (defined('\Pdo\Mysql::ATTR_SSL_CA')
+                    ? \Pdo\Mysql::ATTR_SSL_CA
+                    : PDO::MYSQL_ATTR_SSL_CA
+                ) => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
         ],
 
         /*
         |--------------------------------------------------------------------------
-        | Connexion principale : Supabase
+        | PostgreSQL PRINCIPAL
+        | permisdc_roles_test
         |--------------------------------------------------------------------------
         */
 
@@ -83,19 +109,20 @@ return [
             'url' => env('DB_URL'),
             'host' => env('DB_HOST', '127.0.0.1'),
             'port' => env('DB_PORT', '5432'),
-            'database' => env('DB_DATABASE', 'postgres'),
+            'database' => env('DB_DATABASE', 'permisdc_roles_test'),
             'username' => env('DB_USERNAME', 'postgres'),
             'password' => env('DB_PASSWORD', ''),
             'charset' => env('DB_CHARSET', 'utf8'),
             'prefix' => '',
             'prefix_indexes' => true,
             'search_path' => 'public',
-            'sslmode' => env('DB_SSLMODE', 'require'),
+            'sslmode' => env('DB_SSLMODE', 'disable'),
         ],
 
         /*
         |--------------------------------------------------------------------------
-        | Connexion secondaire : Registre des permis
+        | PostgreSQL SECONDAIRE
+        | registre_permis_test
         |--------------------------------------------------------------------------
         */
 
@@ -111,8 +138,14 @@ return [
             'prefix' => '',
             'prefix_indexes' => true,
             'search_path' => 'public',
-            'sslmode' => env('REGISTRE_DB_SSLMODE', 'prefer'),
+            'sslmode' => env('REGISTRE_DB_SSLMODE', 'disable'),
         ],
+
+        /*
+        |--------------------------------------------------------------------------
+        | SQL Server
+        |--------------------------------------------------------------------------
+        */
 
         'sqlsrv' => [
             'driver' => 'sqlsrv',
@@ -144,6 +177,9 @@ return [
     |--------------------------------------------------------------------------
     | Redis
     |--------------------------------------------------------------------------
+    | Configuration conservée pour une éventuelle installation native.
+    | Elle n'est pas utilisée avec CACHE_STORE=file.
+    |--------------------------------------------------------------------------
     */
 
     'redis' => [
@@ -152,10 +188,12 @@ return [
 
         'options' => [
             'cluster' => env('REDIS_CLUSTER', 'redis'),
+
             'prefix' => env(
                 'REDIS_PREFIX',
                 Str::slug((string) env('APP_NAME', 'laravel')) . '-database-'
             ),
+
             'persistent' => env('REDIS_PERSISTENT', false),
         ],
 
@@ -167,7 +205,10 @@ return [
             'port' => env('REDIS_PORT', '6379'),
             'database' => env('REDIS_DB', '0'),
             'max_retries' => env('REDIS_MAX_RETRIES', 3),
-            'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
+            'backoff_algorithm' => env(
+                'REDIS_BACKOFF_ALGORITHM',
+                'decorrelated_jitter'
+            ),
             'backoff_base' => env('REDIS_BACKOFF_BASE', 100),
             'backoff_cap' => env('REDIS_BACKOFF_CAP', 1000),
         ],
@@ -180,7 +221,10 @@ return [
             'port' => env('REDIS_PORT', '6379'),
             'database' => env('REDIS_CACHE_DB', '1'),
             'max_retries' => env('REDIS_MAX_RETRIES', 3),
-            'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
+            'backoff_algorithm' => env(
+                'REDIS_BACKOFF_ALGORITHM',
+                'decorrelated_jitter'
+            ),
             'backoff_base' => env('REDIS_BACKOFF_BASE', 100),
             'backoff_cap' => env('REDIS_BACKOFF_CAP', 1000),
         ],
