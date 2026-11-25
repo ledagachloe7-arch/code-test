@@ -326,6 +326,7 @@ Route::middleware(['auth.token'])->group(function () {
 
     // Duplicata du permis rose (contrôle shortcode + création du dossier lié au permis source)
     Route::get('/duplicata-rose/permis/{hPermisId}/shortcode', [DuplicataRoseController::class, 'shortcode'])->name('duplicata-rose.shortcode');
+    Route::get('/duplicata-rose/permis/{hPermisId}/paiement', [DuplicataRoseController::class, 'paiement'])->name('duplicata-rose.paiement');
     Route::post('/duplicata-rose', [DuplicataRoseController::class, 'store'])->middleware('throttle:10,1')->name('duplicata-rose.store');
 
     // Informatisation des anciens permis roses (registre Excel → nouveau numéro unique)

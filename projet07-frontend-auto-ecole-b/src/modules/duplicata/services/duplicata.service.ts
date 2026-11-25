@@ -1,4 +1,5 @@
 import axiosClient from '../../../shared/utils/axiosConfig';
+import type { CommandeGuichet } from '../../demande/services/guichet.service';
 
 /** Support du permis : ROSE = permis de conduire national, VERT = fiche d'enregistrement. */
 export type SupportPermis = 'ROSE' | 'VERT';
@@ -104,7 +105,14 @@ export interface DuplicataCree {
 }
 
 /** Seul un shortcode confirmé ACTIF par le serveur autorise la soumission. */
-export const shortcodeAutoriseSoumission = (s: StatutShortcode) => s === 'ACTIF';
+export interface EtatPaiementDuplicata {
+  paye: boolean;
+  montant: string | null;
+  commande_numero: string | null;
+  commande_en_attente: CommandeGuichet | null;
+}
+
+export const shortcodeAutoriseSoumission =(s: StatutShortcode) => s === 'ACTIF';
 
 export type MotifDuplicata = 'PERTE' | 'VOL' | 'DETERIORATION' | 'AUTRE';
 
@@ -163,7 +171,17 @@ export const duplicataService = {
     }
   },
 
-  /** Crée le dossier de duplicata (contrôles refaits côté serveur). */
+  /** Le duplicata se paie AVANT la création : paiement confirmé pas encore utilisé, ou commande encore en attente. */
+  async etatPaiement(permis: PermisSource): Promise<EtatPaiementDuplicata> {
+    try {
+      const { data } = await axiosClient.get(`/duplicata-rose/permis/${permis.id}/paiement`);
+      return data.data as EtatPaiementDuplicata;
+    } catch (error) {
+      throw new Error(messageErreur(error, 'Impossible de vérifier le paiement du duplicata.'));
+    }
+  },
+
+  /** Crée le dossier de duplicata (contrôles refaits côté serveur, dont le paiement). */
   async soumettre(saisie: SaisieDuplicata): Promise<DuplicataCree> {
     const fd = new FormData();
     saisie.permisIds.forEach((id) => fd.append('h_permis_ids[]', id));

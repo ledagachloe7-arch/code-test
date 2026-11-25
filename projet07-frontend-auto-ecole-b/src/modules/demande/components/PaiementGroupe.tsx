@@ -34,6 +34,12 @@ interface Props {
   onRetirer: (index: number) => void;
   /** Paiement confirmé : le panier est vidé ; reçoit la commande (lignes payées). */
   onPaye: (commande: CommandeGuichet) => void;
+  /** Titre du cadre (par défaut « Paiement groupé »). */
+  titre?: string;
+  /** Faux : pas de bouton de retrait (panier imposé, ex. duplicata). */
+  retirable?: boolean;
+  /** Commande déjà lancée à reprendre (ex. après rechargement de la page). */
+  commandeInitiale?: CommandeGuichet | null;
 }
 
 const fcfa = (n: number | string, devise: string) => `${Number(n).toLocaleString('fr-FR')} ${devise}`;
@@ -41,14 +47,16 @@ const fcfa = (n: number | string, devise: string) => `${Number(n).toLocaleString
 /**
  * Paiement groupé du guichet usager : liste des actions ajoutées, total calculé par le serveur, un seul paiement.
  */
-const PaiementGroupe: React.FC<Props> = ({ hPermisId, panier, couleur, onRetirer, onPaye }) => {
+const PaiementGroupe: React.FC<Props> = ({
+  hPermisId, panier, couleur, onRetirer, onPaye, titre = 'Paiement groupé', retirable = true, commandeInitiale = null,
+}) => {
   const [devis, setDevis] = useState<Devis | null>(null);
   const [erreurDevis, setErreurDevis] = useState<string | null>(null);
   const [calcul, setCalcul] = useState(false);
   const [operateur, setOperateur] = useState<OperateurGuichet>('AIRTEL');
   const [telephone, setTelephone] = useState('');
   const [envoi, setEnvoi] = useState(false);
-  const [commande, setCommande] = useState<CommandeGuichet | null>(null);
+  const [commande, setCommande] = useState<CommandeGuichet | null>(commandeInitiale);
   const [verification, setVerification] = useState(false);
 
   // Montants recalculés par le serveur à chaque changement du panier.
@@ -108,7 +116,7 @@ const PaiementGroupe: React.FC<Props> = ({ hPermisId, panier, couleur, onRetirer
     return (
       <Paper sx={{ p: 2, mb: 3, borderTop: `4px solid ${couleur}` }}>
         <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
-          <Typography variant="h6">Paiement groupé {commande.numero}</Typography>
+          <Typography variant="h6">{titre} {commande.numero}</Typography>
           <Chip size="small" color={couleurStatut} label={
             commande.statut === 'CONFIRME' ? 'Payé' : commande.statut === 'ECHOUE' ? 'Échoué' : 'En attente de paiement'
           } />
@@ -153,7 +161,7 @@ const PaiementGroupe: React.FC<Props> = ({ hPermisId, panier, couleur, onRetirer
   return (
     <Paper sx={{ p: 2, mb: 3, borderTop: `4px solid ${couleur}` }}>
       <Typography variant="h6" gutterBottom>
-        Paiement groupé
+        {titre}
       </Typography>
       {panier.length === 0 ? (
         <Typography variant="body2" color="text.secondary">
@@ -179,9 +187,11 @@ const PaiementGroupe: React.FC<Props> = ({ hPermisId, panier, couleur, onRetirer
                     <TableCell>{ligne?.libelle ?? p.libelle}</TableCell>
                     <TableCell align="right">{ligne && devis ? fcfa(ligne.montant, devis.devise) : '—'}</TableCell>
                     <TableCell align="right" sx={{ width: 48 }}>
-                      <IconButton size="small" aria-label="Retirer" onClick={() => onRetirer(i)}>
-                        <TrashIcon style={{ width: 18 }} />
-                      </IconButton>
+                      {retirable && (
+                        <IconButton size="small" aria-label="Retirer" onClick={() => onRetirer(i)}>
+                          <TrashIcon style={{ width: 18 }} />
+                        </IconButton>
+                      )}
                     </TableCell>
                   </TableRow>
                 );
@@ -198,6 +208,12 @@ const PaiementGroupe: React.FC<Props> = ({ hPermisId, panier, couleur, onRetirer
 
           {erreurDevis && <Alert severity="error" sx={{ mt: 2 }}>{erreurDevis}</Alert>}
 
+          <Alert severity="info" sx={{ mt: 2 }}>
+            {operateur === 'MOOV'
+              ? 'Moov Money : saisissez le numéro de l’usager. Il reçoit une notification sur son téléphone avec le montant et valide avec son code secret.'
+              : 'Airtel Money : pas de notification sur le téléphone. Un code de paiement est généré ; l’usager paie avec ce code puis vous cliquez sur « Vérifier le paiement ». Pour une notification sur le téléphone, choisissez Moov Money.'}
+          </Alert>
+
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }} sx={{ mt: 2 }}>
             <TextField select size="small" label="Opérateur" value={operateur} sx={{ minWidth: 160 }}
               onChange={(e) => setOperateur(e.target.value as OperateurGuichet)}>
@@ -205,7 +221,8 @@ const PaiementGroupe: React.FC<Props> = ({ hPermisId, panier, couleur, onRetirer
               <MenuItem value="MOOV">Moov Money</MenuItem>
             </TextField>
             {operateur === 'MOOV' && (
-              <TextField size="small" label="Téléphone Moov" value={telephone} onChange={(e) => setTelephone(e.target.value)} />
+              <TextField size="small" label="Téléphone Moov de l’usager" placeholder="ex. 062 12 34 56" value={telephone}
+                inputProps={{ inputMode: 'tel' }} onChange={(e) => setTelephone(e.target.value)} />
             )}
             <Box sx={{ flex: 1 }} />
             <Button

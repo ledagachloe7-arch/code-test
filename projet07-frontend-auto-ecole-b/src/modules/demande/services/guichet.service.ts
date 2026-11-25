@@ -1,7 +1,7 @@
 import axiosClient from '../../../shared/utils/axiosConfig';
 
 /** Actions payables dans le paiement groupé du guichet usager. */
-export type TypeLigneGuichet = 'RENOUVELLEMENT' | 'DIGITALISATION' | 'MISE_A_JOUR';
+export type TypeLigneGuichet = 'RENOUVELLEMENT' | 'DIGITALISATION' | 'MISE_A_JOUR' | 'DUPLICATA';
 export type OperateurGuichet = 'MOOV' | 'AIRTEL';
 export type StatutCommande = 'EN_ATTENTE_PAIEMENT' | 'CONFIRME' | 'ECHOUE';
 

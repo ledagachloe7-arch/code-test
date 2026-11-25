@@ -115,6 +115,22 @@ class CommandeGuichetService
                     ];
                     break;
 
+                case CommandeGuichetLigne::TYPE_DUPLICATA:
+                    // Payé avant la création de la demande : rattaché au titulaire (n° d'identité + support).
+                    if (empty($titulaire->numero_identite)) {
+                        throw new RenouvellementException('Duplicata : le titulaire n’a pas de numéro d’identité, paiement impossible.', 422);
+                    }
+                    if ($this->ligneDuplicataDisponible($titulaire->numero_identite, $support)) {
+                        throw new RenouvellementException('Duplicata : un paiement est déjà confirmé pour cet usager et pas encore utilisé. Créez la demande.', 409);
+                    }
+                    $detail[] = [
+                        'type' => $type,
+                        'objet_id' => null,
+                        'libelle' => 'Duplicata — ' . SupportPermis::libelle($support),
+                        'montant' => $this->montantDuplicata($support),
+                    ];
+                    break;
+
                 default:
                     throw new RenouvellementException("Action inconnue : {$type}.", 422);
             }
@@ -122,6 +138,9 @@ class CommandeGuichetService
 
         if (count(array_filter($detail, fn ($d) => $d['type'] === CommandeGuichetLigne::TYPE_RENOUVELLEMENT)) > 1) {
             throw new RenouvellementException('Un seul renouvellement par paiement.', 422);
+        }
+        if (count(array_filter($detail, fn ($d) => $d['type'] === CommandeGuichetLigne::TYPE_DUPLICATA)) > 1) {
+            throw new RenouvellementException('Un seul duplicata par paiement.', 422);
         }
 
         return [
@@ -165,6 +184,74 @@ class CommandeGuichetService
         $this->verifierNonDejaPaye(CommandeGuichetLigne::TYPE_MISE_A_JOUR, $demande->id, "la demande {$demande->numero}");
 
         return $demande;
+    }
+
+    private function montantDuplicata(string $support): float
+    {
+        $fiche = config('guichet.montant_duplicata_fiche');
+        if ($support === SupportPermis::VERT && $fiche !== null && $fiche !== '' && (float) $fiche > 0) {
+            return (float) $fiche;
+        }
+
+        return $this->montantConfig('montant_duplicata', 'DUPLICATA_MONTANT');
+    }
+
+    /**
+     * Ligne DUPLICATA payée et pas encore utilisée par une demande, pour ce titulaire et ce support.
+     * $verrouiller : à utiliser dans la transaction de création du duplicata (évite qu'un paiement serve deux fois).
+     */
+    public function ligneDuplicataDisponible(?string $numeroIdentite, string $support, bool $verrouiller = false): ?CommandeGuichetLigne
+    {
+        if (empty($numeroIdentite)) {
+            return null;
+        }
+        $q = CommandeGuichetLigne::query()
+            ->where('type', CommandeGuichetLigne::TYPE_DUPLICATA)
+            ->where('statut', CommandeGuichetLigne::STATUT_PAYE)
+            // Pas encore utilisée : objet_id est encore le jeton, pas l'id d'une demande de duplicata.
+            ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('duplicata_demandes')
+                ->whereColumn('duplicata_demandes.id', 'commande_guichet_lignes.objet_id'))
+            ->whereIn('commande_guichet_id', CommandeGuichet::query()->select('id')
+                ->where('statut', CommandeGuichet::STATUT_CONFIRME)
+                ->where('numero_identite', $numeroIdentite)
+                ->where('support', $support))
+            ->orderBy('created_at');
+
+        return ($verrouiller ? $q->lockForUpdate() : $q)->first();
+    }
+
+    /** Dernière commande de duplicata encore en attente de paiement pour ce titulaire (reprise après rechargement). */
+    public function commandeDuplicataEnAttente(?string $numeroIdentite, string $support): ?CommandeGuichet
+    {
+        if (empty($numeroIdentite)) {
+            return null;
+        }
+
+        return CommandeGuichet::with('lignes')
+            ->where('statut', CommandeGuichet::STATUT_EN_ATTENTE)
+            ->where('numero_identite', $numeroIdentite)
+            ->where('support', $support)
+            ->whereHas('lignes', fn ($q) => $q->where('type', CommandeGuichetLigne::TYPE_DUPLICATA))
+            ->latest()
+            ->first();
+    }
+
+    /**
+     * Rattache le paiement à la demande de duplicata qui vient d'être créée (dans sa transaction)
+     * et l'enregistre dans l'historique des paiements du dossier.
+     */
+    public function consommerDuplicata(CommandeGuichetLigne $ligne, string $duplicataId, Dossier $dossier): void
+    {
+        $ligne->forceFill(['objet_id' => $duplicataId])->save();
+        $c = CommandeGuichet::find($ligne->commande_guichet_id);
+        $this->paiementHistoriqueService->creerPaiement([
+            'dossier_id' => $dossier->id,
+            'code_paiement' => $c->code_paiement . '-DUP',
+            'reference_paiement' => $c->reference_paiement ?: 'GCH-' . $c->id,
+            'montant' => $ligne->montant,
+            'nom' => $c->nom ?? '',
+            'prenom' => $c->prenom ?? '',
+        ]);
     }
 
     private function verifierNonDejaPaye(string $type, string $objetId, string $libelle): void
@@ -225,6 +312,10 @@ class CommandeGuichetService
                     $r = $this->renouvellementService->creerDemande($hPermisId, $operateur, $telephone, $agent);
                     $objetId = $r->id;
                     $montant = (float) $r->montant;
+                }
+                if ($d['type'] === CommandeGuichetLigne::TYPE_DUPLICATA) {
+                    // Jeton provisoire : remplacé par l'id de la demande de duplicata quand elle est créée.
+                    $objetId = (string) Str::uuid();
                 }
                 (new CommandeGuichetLigne())->forceFill([
                     'commande_guichet_id' => $c->id,
@@ -326,6 +417,10 @@ class CommandeGuichetService
 
                     case CommandeGuichetLigne::TYPE_MISE_A_JOUR:
                         // Rien d'autre à faire : la demande suit sa validation habituelle, payée via cette ligne.
+                        break;
+
+                    case CommandeGuichetLigne::TYPE_DUPLICATA:
+                        // La demande n'existe pas encore : la ligne payée débloque sa création (consommerDuplicata).
                         break;
                 }
                 $l->forceFill(['statut' => CommandeGuichetLigne::STATUT_PAYE])->save();

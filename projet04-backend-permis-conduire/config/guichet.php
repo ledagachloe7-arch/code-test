@@ -8,5 +8,8 @@
 return [
     'montant_digitalisation' => env('DIGITALISATION_MONTANT'),
     'montant_mise_a_jour' => env('MISE_A_JOUR_MONTANT'),
+    // Duplicata : payé avant la création de la demande. Fiche d'enregistrement : vide = même montant que le rose.
+    'montant_duplicata' => env('DUPLICATA_MONTANT'),
+    'montant_duplicata_fiche' => env('DUPLICATA_MONTANT_FICHE'),
     'devise' => env('GUICHET_DEVISE', env('RENOUVELLEMENT_DEVISE', 'XAF')),
 ];

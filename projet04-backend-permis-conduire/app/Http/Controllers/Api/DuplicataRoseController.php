@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Exceptions\DuplicataException;
 use App\Http\Controllers\Controller;
+use App\Models\CommandeGuichet;
 use App\Models\HPermis;
+use App\Services\CommandeGuichetService;
 use App\Services\DuplicataRoseService;
 use App\Support\SupportPermis;
 use Dedoc\Scramble\Attributes\Endpoint;
@@ -51,6 +53,29 @@ class DuplicataRoseController extends Controller
             // Le shortcode lui-même n'est renvoyé qu'une fois confirmé actif.
             'shortcode' => $controle['statut'] === DuplicataRoseService::SHORTCODE_ACTIF ? $controle['shortcode']?->shortcode : null,
         ], $controle['statut'] === DuplicataRoseService::SHORTCODE_NON_VERIFIE ? 503 : 200);
+    }
+
+    #[Endpoint(title: 'État du paiement du duplicata', description: 'Paramètre : id h_permis du permis source. Le duplicata se paie AVANT la création de la demande (paiement du guichet, type DUPLICATA). Retourne paye (paiement confirmé pas encore utilisé), le montant à payer, et la commande encore en attente s\'il y en a une.')]
+    public function paiement(string $hPermisId): JsonResponse
+    {
+        $permis = HPermis::find($hPermisId);
+        if (! $permis) {
+            return response()->json(['success' => false, 'message' => 'Permis source introuvable.'], 404);
+        }
+        $support = SupportPermis::de($permis);
+        $guichet = app(CommandeGuichetService::class);
+        $ligne = $guichet->ligneDuplicataDisponible($permis->numero_identite, $support);
+        $enAttente = $ligne ? null : $guichet->commandeDuplicataEnAttente($permis->numero_identite, $support);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'paye' => $ligne !== null,
+                'montant' => $ligne?->montant,
+                'commande_numero' => $ligne ? CommandeGuichet::whereKey($ligne->commande_guichet_id)->value('numero') : null,
+                'commande_en_attente' => $enAttente ? CommandeGuichetService::presenter($enAttente) : null,
+            ],
+        ]);
     }
 
     #[Endpoint(title: 'Créer une demande de duplicata (permis rose ou fiche d\'enregistrement)', description: 'multipart/form-data : h_permis_ids[] (une ou plusieurs catégories du même titulaire et du même support ; le premier = permis principal), support (ROSE|VERT, facultatif : circuit de l\'écran), motif (PERTE|VOL|DETERIORATION|AUTRE), motif_precision (obligatoire si AUTRE), observations, justificatif (pdf/jpg/png). Contrôles serveur : permis existant du bon support, shortcode actif recalculé, anti-doublon. Crée un dossier DUPLICATA (permis rose) ou DUPLICATAFICHEENREGISTREMENT (fiche), statut initial en_attente, lié au permis source.')]

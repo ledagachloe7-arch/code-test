@@ -237,6 +237,13 @@ class DuplicataRoseService
                 }
                 $shortcode = $controle['shortcode'];
 
+                // Paiement obligatoire AVANT la création : une ligne DUPLICATA payée et pas encore utilisée (verrouillée).
+                $guichet = app(CommandeGuichetService::class);
+                $lignePaiement = $guichet->ligneDuplicataDisponible($permis->numero_identite, $support, true);
+                if (! $lignePaiement) {
+                    throw new DuplicataException('Le paiement du duplicata doit être confirmé avant la création de la demande.', 422);
+                }
+
                 $centreId = $agent->centre_id ?? null;
                 $dossier = Dossier::create([
                     'candidat_id' => $shortcode->candidat_id,
@@ -307,6 +314,9 @@ class DuplicataRoseService
                         'updated_at' => now(),
                     ]);
                 }
+
+                // Le paiement est rattaché à cette demande : il ne pourra plus servir pour une autre.
+                $guichet->consommerDuplicata($lignePaiement, $d->id, $dossier);
 
                 return $d;
             });

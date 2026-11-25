@@ -47,8 +47,14 @@ import {
   type ModeRecherche,
   type MotifDuplicata,
   type PermisSource,
+  type EtatPaiementDuplicata,
 } from '../services/duplicata.service';
+import PaiementGroupe from '../../demande/components/PaiementGroupe';
+import type { ElementPanier } from '../../demande/services/guichet.service';
 import toast from 'react-hot-toast';
+
+/** Le duplicata se paie seul, avant la création de la demande (montant calculé par le serveur). */
+const PANIER_DUPLICATA: ElementPanier[] = [{ type: 'DUPLICATA', libelle: 'Duplicata' }];
 
 interface Props {
   titre?: string;
@@ -88,7 +94,8 @@ const TAILLE_MAX_JUSTIFICATIF = 5 * 1024 * 1024;
 
 /**
  * Duplicata du permis de conduire rose (cadrage v1.0 du 17/11/2026) ou de la fiche d'enregistrement (permis vert).
- * Parcours : recherche du permis source → fiche lecture seule → contrôle shortcode (serveur) → motif → récapitulatif → création.
+ * Parcours : recherche du permis source → fiche lecture seule → contrôle shortcode (serveur) → motif → paiement → récapitulatif → création.
+ * Le paiement est obligatoire AVANT la création (refusée par le serveur sinon).
  * Seules les lignes du support de l'écran sont sélectionnables ; les autres restent visibles, grisées.
  * Tous les contrôles sont refaits par le serveur à la création ; ceux de cette page ne sont qu'une aide à la saisie.
  * Le permis source n'est jamais modifié depuis ce parcours.
@@ -128,13 +135,33 @@ const DuplicataPermisRosePage: React.FC<Props> = ({ titre, couleur, onRetour, su
   const [justificatif, setJustificatif] = useState<File | null>(null);
   const [erreurFichier, setErreurFichier] = useState<string | null>(null);
 
-  // G — Soumission
+  // G — Paiement (avant la création)
+  const [paiement, setPaiement] = useState<EtatPaiementDuplicata | null>(null);
+  const [chargePaiement, setChargePaiement] = useState(false);
+  const [erreurPaiement, setErreurPaiement] = useState<string | null>(null);
+
+  // H — Soumission
   const [envoi, setEnvoi] = useState(false);
   const [cree, setCree] = useState<DuplicataCree | null>(null);
 
   const reinitialiserApresPermis = () => {
     setConfirme(false);
     setControle(null);
+    setPaiement(null);
+    setErreurPaiement(null);
+  };
+
+  const chargerPaiement = async (p: PermisSource) => {
+    setChargePaiement(true);
+    setErreurPaiement(null);
+    try {
+      setPaiement(await duplicataService.etatPaiement(p));
+    } catch (err) {
+      setPaiement(null);
+      setErreurPaiement(err instanceof Error ? err.message : 'Impossible de vérifier le paiement du duplicata.');
+    } finally {
+      setChargePaiement(false);
+    }
   };
 
   /** Sélectionne un titulaire : toutes ses catégories du support de l'écran présentes dans `liste` sont cochées. */
@@ -233,7 +260,11 @@ const DuplicataPermisRosePage: React.FC<Props> = ({ titre, couleur, onRetour, su
     setVerification(true);
     try {
       // Le service ne lève pas d'erreur : indisponibilité = NON_VERIFIE (jamais considéré comme réussi).
-      setControle(await duplicataService.verifierShortcode(p, support));
+      const res = await duplicataService.verifierShortcode(p, support);
+      setControle(res);
+      // Le paiement n'est proposé qu'une fois le shortcode vérifié.
+      if (res.statut === 'ACTIF') await chargerPaiement(p);
+      else setPaiement(null);
     } finally {
       setVerification(false);
     }
@@ -254,6 +285,7 @@ const DuplicataPermisRosePage: React.FC<Props> = ({ titre, couleur, onRetour, su
   if (!shortcode || !shortcodeAutoriseSoumission(shortcode)) blocages.push('Le contrôle du shortcode par le serveur doit être positif.');
   if (!motif) blocages.push('Le motif est obligatoire.');
   if (motif === 'AUTRE' && !precision.trim()) blocages.push('La précision du motif est obligatoire pour « Autre ».');
+  if (!paiement?.paye && !cree) blocages.push('Le paiement du duplicata doit être confirmé avant la création.');
 
   const soumettre = async () => {
     if (envoi || blocages.length > 0 || !selection || !motif) return;
@@ -536,8 +568,42 @@ const DuplicataPermisRosePage: React.FC<Props> = ({ titre, couleur, onRetour, su
         </Grid>
       </Bloc>
 
-      {/* G — Récapitulatif */}
-      <Bloc lettre="G" titre="Récapitulatif et soumission" actif={confirme}>
+      {/* G — Paiement (obligatoire avant la création) */}
+      <Bloc lettre="G" titre="Paiement du duplicata" actif={confirme && shortcode === 'ACTIF'}>
+        {!confirme || shortcode !== 'ACTIF' ? (
+          <Typography variant="body2" color="text.secondary">
+            Le paiement est possible une fois le permis confirmé et le shortcode vérifié.
+          </Typography>
+        ) : chargePaiement ? (
+          <Stack direction="row" spacing={1} alignItems="center"><CircularProgress size={18} /><Typography variant="body2">Vérification du paiement…</Typography></Stack>
+        ) : erreurPaiement ? (
+          <Alert severity="error" action={selection ? (
+            <Button color="inherit" size="small" onClick={() => chargerPaiement(selection)}>Réessayer</Button>
+          ) : undefined}>{erreurPaiement}</Alert>
+        ) : cree ? (
+          <Alert severity="success">Paiement utilisé pour le dossier {cree.numero_dossier}.</Alert>
+        ) : paiement?.paye ? (
+          <Alert severity="success">
+            <AlertTitle>Paiement confirmé</AlertTitle>
+            Commande {paiement.commande_numero} — vous pouvez soumettre la demande de duplicata.
+          </Alert>
+        ) : selection && (
+          <PaiementGroupe
+            key={selection.id}
+            hPermisId={selection.id}
+            panier={PANIER_DUPLICATA}
+            couleur={couleur ?? '#1976d2'}
+            titre="Paiement du duplicata"
+            retirable={false}
+            commandeInitiale={paiement?.commande_en_attente ?? null}
+            onRetirer={() => undefined}
+            onPaye={() => void chargerPaiement(selection)}
+          />
+        )}
+      </Bloc>
+
+      {/* H — Récapitulatif */}
+      <Bloc lettre="H" titre="Récapitulatif et soumission" actif={confirme}>
         <Grid container spacing={2}>
           <Champ label="Titulaire" valeur={selection ? `${selection.nom} ${selection.prenom ?? ''}`.trim() : '—'} />
           <Champ label="Permis principal" valeur={selection?.numero_permis ?? '—'} />
@@ -548,6 +614,7 @@ const DuplicataPermisRosePage: React.FC<Props> = ({ titre, couleur, onRetour, su
           <Champ label="Motif" valeur={libelleMotif ? `${libelleMotif}${motif === 'AUTRE' && precision ? ` — ${precision}` : ''}` : '—'} />
           <Champ label="Observations" valeur={observations || '—'} />
           <Champ label="Justificatif" valeur={justificatif?.name ?? 'Aucun'} />
+          <Champ label="Paiement" valeur={cree ? 'Utilisé' : paiement?.paye ? `Confirmé (${paiement.commande_numero})` : 'Non payé'} />
         </Grid>
         <Alert severity="info" sx={{ mt: 2 }}>
           Demande de duplicata liée aux permis existants du titulaire. Les permis sources ne seront ni modifiés, ni remplacés,
